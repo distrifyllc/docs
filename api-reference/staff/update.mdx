@@ -1,0 +1,45 @@
+---
+title: 'Update Staff'
+description: 'Update a staff member by ID'
+---
+
+## Endpoint
+
+```
+PUT /api/organizations/v1/staff/{id}
+```
+
+## Path parameters
+
+| Name | Type | Description |
+|---|---|---|
+| `id` | uuid | Staff member ID |
+
+## Headers
+
+`Authorization: Bearer <token>`, `x-org-id`, `Content-Type: application/json`.
+
+## Request body
+
+Same shape as [Create Staff](/api-reference/staff/create). All fields except `phone`, `email`, `warehouses` are required.
+
+```json
+{
+  "name": "Ana María",
+  "lastname": "García",
+  "phone": "+57 300 1234567",
+  "email": "ana@acme.com",
+  "warehouses": ["0190c1a0-1111-7000-8000-aaaabbbbcccc"]
+}
+```
+
+## Response — `200 OK`
+
+Returns the updated `StaffDTO`.
+
+## Errors
+
+| Status | When |
+|---|---|
+| `400` | Validation failed |
+| `404` | Staff member not found in this organization |

@@ -61,6 +61,23 @@
             ]
           },
           {
+            "group": "Organization",
+            "pages": [
+              "api-reference/organization/profile"
+            ]
+          },
+          {
+            "group": "Staff",
+            "pages": [
+              "api-reference/staff/list",
+              "api-reference/staff/get",
+              "api-reference/staff/create",
+              "api-reference/staff/update",
+              "api-reference/staff/toggle-active",
+              "api-reference/staff/delete"
+            ]
+          },
+          {
             "group": "Endpoint examples",
             "pages": [
               "api-reference/endpoint/get",

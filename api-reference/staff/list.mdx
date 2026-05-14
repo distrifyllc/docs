@@ -1,0 +1,52 @@
+---
+title: 'List Staff'
+description: 'Paginated list of staff members for the scoped organization'
+---
+
+## Endpoint
+
+```
+GET /api/organizations/v1/staff
+```
+
+## Headers
+
+| Name | Required |
+|---|---|
+| `Authorization: Bearer <token>` | yes |
+| `x-org-id` | yes |
+
+## Query parameters
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `page` | int | `1` | Page number (1-indexed) |
+| `pageSize` | int | `20` | Items per page (max 100) |
+
+## Response — `200 OK`
+
+```json
+{
+  "data": [
+    {
+      "id": "0190b9d0-7e0e-7a3a-9b40-1234567890ab",
+      "organizationId": "0190a4f7-7d39-7c2c-9b1a-9c8a2e7d3f01",
+      "name": "Ana",
+      "lastname": "García",
+      "phone": "+57 300 1234567",
+      "email": "ana@acme.com",
+      "warehouses": ["0190c1a0-..."],
+      "isActive": true,
+      "isInternal": false,
+      "roles": [
+        { "id": "...", "name": "Sales Rep" }
+      ],
+      "createdAt": "2026-02-10T15:04:05Z",
+      "updatedAt": "2026-05-01T10:00:00Z"
+    }
+  ],
+  "total": 42,
+  "page": 1,
+  "pageSize": 20
+}
+```

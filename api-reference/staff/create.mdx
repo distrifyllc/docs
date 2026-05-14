@@ -1,0 +1,45 @@
+---
+title: 'Create Staff'
+description: 'Create a new staff member in the scoped organization'
+---
+
+## Endpoint
+
+```
+POST /api/organizations/v1/staff
+```
+
+## Headers
+
+`Authorization: Bearer <token>`, `x-org-id`, `Content-Type: application/json`.
+
+## Request body
+
+| Field | Type | Required | Constraints |
+|---|---|---|---|
+| `name` | string | yes | 1–255 chars |
+| `lastname` | string | yes | 1–255 chars |
+| `phone` | string | no | ≤ 50 chars |
+| `email` | string | no | valid email, ≤ 255 chars |
+| `warehouses` | string[] | no | array of warehouse UUIDs |
+
+```json
+{
+  "name": "Ana",
+  "lastname": "García",
+  "phone": "+57 300 1234567",
+  "email": "ana@acme.com",
+  "warehouses": ["0190c1a0-1111-7000-8000-aaaabbbbcccc"]
+}
+```
+
+## Response — `201 Created`
+
+Returns the created `StaffDTO` (same shape as [Get Staff](/api-reference/staff/get)).
+
+## Errors
+
+| Status | When |
+|---|---|
+| `400` | Validation failed — message is localized via `Accept-Language` |
+| `409` | A staff member with the same email already exists in the organization |
