@@ -1,216 +1,367 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "OpenAPI Plant Store",
-    "description": "A sample API that uses a plant store as an example to demonstrate features in the OpenAPI specification",
-    "license": {
-      "name": "MIT"
-    },
+    "title": "Distrify API",
+    "description": "REST API for the Distrify platform — organization, staff and related resources.",
     "version": "1.0.0"
   },
   "servers": [
     {
-      "url": "http://sandbox.mintlify.com"
+      "url": "https://api.distrify.us",
+      "description": "Production"
+    },
+    {
+      "url": "http://localhost",
+      "description": "Local (via the api-gateway nginx on docker-compose)"
     }
   ],
   "security": [
-    {
-      "bearerAuth": []
-    }
+    { "bearerAuth": [], "orgIdHeader": [] }
+  ],
+  "tags": [
+    { "name": "Organization", "description": "Organization profile" },
+    { "name": "Staff", "description": "Staff member CRUD" }
   ],
   "paths": {
-    "/plants": {
+    "/api/organizations/v1/profile": {
       "get": {
-        "description": "Returns all plants from the system that the user has access to",
+        "tags": ["Organization"],
+        "summary": "Get organization profile",
+        "description": "Returns the full profile of the organization identified by the `x-org-id` header.",
+        "responses": {
+          "200": {
+            "description": "Organization profile",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Organization" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/organizations/v1/staff": {
+      "get": {
+        "tags": ["Staff"],
+        "summary": "List staff",
+        "description": "Returns a paginated list of staff members in the scoped organization.",
         "parameters": [
           {
-            "name": "limit",
+            "name": "page",
             "in": "query",
-            "description": "The maximum number of results to return",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
+            "description": "1-indexed page number",
+            "schema": { "type": "integer", "minimum": 1, "default": 1 }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "Items per page (max 100)",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
           }
         ],
         "responses": {
           "200": {
-            "description": "Plant response",
+            "description": "Paginated staff list",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Plant"
+                  "type": "object",
+                  "required": ["data", "total", "page", "pageSize"],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Staff" }
+                    },
+                    "total": { "type": "integer", "example": 42 },
+                    "page": { "type": "integer", "example": 1 },
+                    "pageSize": { "type": "integer", "example": 20 }
                   }
                 }
               }
             }
           },
-          "400": {
-            "description": "Unexpected error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       },
       "post": {
-        "description": "Creates a new plant in the store",
+        "tags": ["Staff"],
+        "summary": "Create staff",
+        "description": "Creates a new staff member in the scoped organization.",
         "requestBody": {
-          "description": "Plant to add to the store",
+          "required": true,
           "content": {
             "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NewPlant"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "plant response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Plant"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "unexpected error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
+              "schema": { "$ref": "#/components/schemas/CreateStaffRequest" }
             }
           }
+        },
+        "responses": {
+          "201": {
+            "description": "Staff created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Staff" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "409": { "$ref": "#/components/responses/Conflict" }
         }
       }
     },
-    "/plants/{id}": {
+    "/api/organizations/v1/staff/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Staff member UUID",
+          "schema": { "type": "string", "format": "uuid" }
+        }
+      ],
+      "get": {
+        "tags": ["Staff"],
+        "summary": "Get staff",
+        "description": "Returns a single staff member by ID.",
+        "responses": {
+          "200": {
+            "description": "Staff member",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Staff" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["Staff"],
+        "summary": "Update staff",
+        "description": "Updates an existing staff member.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateStaffRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated staff member",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Staff" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
       "delete": {
-        "description": "Deletes a single plant based on the ID supplied",
+        "tags": ["Staff"],
+        "summary": "Delete staff",
+        "description": "Soft-deletes a staff member.",
+        "responses": {
+          "204": { "description": "Staff member deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/organizations/v1/staff/{id}/toggle-active": {
+      "patch": {
+        "tags": ["Staff"],
+        "summary": "Toggle staff active",
+        "description": "Enables or disables a staff member without deleting it.",
         "parameters": [
           {
             "name": "id",
             "in": "path",
-            "description": "ID of plant to delete",
             "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
+            "description": "Staff member UUID",
+            "schema": { "type": "string", "format": "uuid" }
           }
         ],
-        "responses": {
-          "204": {
-            "description": "Plant deleted",
-            "content": {}
-          },
-          "400": {
-            "description": "unexpected error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "webhooks": {
-    "/plant/webhook": {
-      "post": {
-        "description": "Information about a new plant added to the store",
         "requestBody": {
-          "description": "Plant added to the store",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewPlant"
+                "type": "object",
+                "required": ["isActive"],
+                "properties": {
+                  "isActive": { "type": "boolean", "example": false }
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Return a 200 status to indicate that the data was received successfully"
-          }
+            "description": "Updated staff member",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Staff" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     }
   },
   "components": {
-    "schemas": {
-      "Plant": {
-        "required": [
-          "name"
-        ],
-        "type": "object",
-        "properties": {
-          "name": {
-            "description": "The name of the plant",
-            "type": "string"
-          },
-          "tag": {
-            "description": "Tag to specify the type",
-            "type": "string"
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Firebase ID token issued by the auth service."
+      },
+      "orgIdHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-org-id",
+        "description": "UUID of the organization to scope the request to."
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid credentials / org scope",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
           }
         }
       },
-      "NewPlant": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Plant"
-          },
-          {
-            "required": [
-              "id"
-            ],
-            "type": "object",
-            "properties": {
-              "id": {
-                "description": "Identification number of the plant",
-                "type": "integer",
-                "format": "int64"
-              }
-            }
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
           }
-        ]
+        }
       },
-      "Error": {
-        "required": [
-          "error",
-          "message"
-        ],
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "message": {
-            "type": "string"
+      "Conflict": {
+        "description": "Conflict — resource already exists",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "Validation failed. Message is localized via `Accept-Language`.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
           }
         }
       }
     },
-    "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer"
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["message", "statusCode"],
+        "properties": {
+          "message": { "type": "string", "example": "Resource not found" },
+          "statusCode": { "type": "integer", "example": 404 }
+        }
+      },
+      "Organization": {
+        "type": "object",
+        "required": ["id", "name", "invoicePrefix", "primaryProductIdentifier", "defaultEntityType", "defaultGenerateInvoice", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "example": "0190a4f7-7d39-7c2c-9b1a-9c8a2e7d3f01" },
+          "name": { "type": "string", "example": "Acme Distributors" },
+          "dba": { "type": "string", "example": "Acme" },
+          "phone": { "type": "string", "example": "+1 555 123 4567" },
+          "email": { "type": "string", "format": "email", "example": "ops@acme.com" },
+          "invoicePrefix": { "type": "string", "maxLength": 10, "example": "ACM" },
+          "primaryProductIdentifier": { "type": "string", "enum": ["SKU", "UPC"], "example": "SKU" },
+          "defaultEntityType": { "type": "string", "enum": ["COMPANY", "PERSON"], "example": "COMPANY" },
+          "defaultGenerateInvoice": { "type": "boolean", "example": true },
+          "defaultPaymentTermId": { "type": "string", "format": "uuid", "nullable": true },
+          "logoUrl": { "type": "string", "format": "uri" },
+          "logoUrlMedium": { "type": "string", "format": "uri" },
+          "logoUrlThumb": { "type": "string", "format": "uri" },
+          "street": { "type": "string", "nullable": true, "example": "123 Main St" },
+          "street2": { "type": "string", "nullable": true },
+          "city": { "type": "string", "nullable": true, "example": "Miami" },
+          "state": { "type": "string", "nullable": true, "example": "FL" },
+          "postalCode": { "type": "string", "nullable": true, "example": "33101" },
+          "country": { "type": "string", "nullable": true, "example": "US" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "RoleSummary": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "example": "Sales Rep" }
+        }
+      },
+      "Staff": {
+        "type": "object",
+        "required": ["id", "organizationId", "name", "lastname", "isActive", "isInternal", "warehouses", "roles", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "example": "0190b9d0-7e0e-7a3a-9b40-1234567890ab" },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "example": "Ana" },
+          "lastname": { "type": "string", "example": "García" },
+          "phone": { "type": "string", "example": "+57 300 1234567" },
+          "email": { "type": "string", "format": "email", "example": "ana@acme.com" },
+          "warehouses": {
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" },
+            "description": "Warehouse UUIDs the staff member can operate on"
+          },
+          "isActive": { "type": "boolean", "example": true },
+          "isInternal": { "type": "boolean", "example": false },
+          "roles": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RoleSummary" }
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "CreateStaffRequest": {
+        "type": "object",
+        "required": ["name", "lastname"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 255, "example": "Ana" },
+          "lastname": { "type": "string", "minLength": 1, "maxLength": 255, "example": "García" },
+          "phone": { "type": "string", "maxLength": 50, "example": "+57 300 1234567" },
+          "email": { "type": "string", "format": "email", "maxLength": 255, "example": "ana@acme.com" },
+          "warehouses": {
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" }
+          }
+        }
+      },
+      "UpdateStaffRequest": {
+        "type": "object",
+        "required": ["name", "lastname"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 255, "example": "Ana María" },
+          "lastname": { "type": "string", "minLength": 1, "maxLength": 255, "example": "García" },
+          "phone": { "type": "string", "maxLength": 50 },
+          "email": { "type": "string", "format": "email", "maxLength": 255 },
+          "warehouses": {
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" }
+          }
+        }
       }
     }
   }
