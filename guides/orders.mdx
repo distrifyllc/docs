@@ -1,0 +1,160 @@
+---
+title: 'Orders list & detail'
+description: 'Searching, filtering and inspecting orders on the mobile app'
+---
+
+The Orders section is the second main tab of the mobile app. It lists every order in the user's scope with filters and counts, and lets them open a full order detail with the tracking timeline, products, client, notes and payments. Visual spec: [DIS-600](https://linear.app/distrifyllc/issue/DIS-600).
+
+## Visibility scope
+
+The backend automatically filters orders by the calling staff member's role:
+
+- **Sales reps** only see orders where `sellerId` matches their own staff record. The "Sales rep" filter is hidden in the UI.
+- **Admins / managers** see every order in the organization. The filter is rendered as a dropdown populated from `GET /api/organizations/v1/staff`.
+
+Read [`/staff/{id}/permissions`](/api-reference/staff/permissions) to decide whether to show the filter.
+
+## Orders list
+
+### Initial fetch
+
+When the user opens the screen, fire two calls in parallel — one for the rows, one for the status badge counts:
+
+```
+GET /api/search/v1/orders?page=1&pageSize=20
+GET /api/search/v1/orders/counts
+```
+
+The search service mirrors `GET /api/orders/v1` but adds full-text search and is the same backend that powers the desktop orders table.
+
+### Filters
+
+| UI control | Query param on `/search/v1/orders` |
+|---|---|
+| Search box (client name / folio / invoice) | `q` |
+| Date range from / to | `dateFrom`, `dateTo` (`YYYY-MM-DD`) |
+| Sales rep dropdown | `sellerId` |
+| Status tab (Todas, En preparación, En tránsito, Entregadas, Canceladas) | `deliveryStatusId` for the logistic tabs; `excludeStatus[]=CANCELLED` for "Todas"; `status=CANCELLED` for "Canceladas" |
+| Payment status (if surfaced) | `paymentStatus` |
+| Has invoice | `hasInvoice` |
+
+Whenever any filter changes:
+
+1. Re-issue `GET /api/search/v1/orders` with the new params.
+2. Re-issue `GET /api/search/v1/orders/counts` so the tab badges (`28 este mes`, `12 en tránsito`, …) update in lockstep. `OrderCountsResponse` returns counts by both delivery status and payment status — bind whichever the tab needs.
+
+### Table rows
+
+Each row uses fields directly from `OrderDTO`:
+
+| Column | `OrderDTO` field |
+|---|---|
+| CREADA | `createdAt`, `sellerName` |
+| FOLIO | `orderNumber` |
+| FACTURA | `invoiceNumber` (may be null) |
+| CLIENTE | `clientName` |
+| TOTAL | `total` |
+| ENTREGA | `deliveryStatus.name` + colour from `deliveryStatus.colour` |
+| PAGO | derived from `paymentStatus` enum (see badges in the spec) |
+
+Tapping a row pushes the [Order detail](#order-detail) view with `orderId`.
+
+### Export PDF
+
+The "Exportar" button bundles the **currently filtered** result set into a PDF. There is no first-class endpoint today; see [Gaps](#gaps).
+
+### "+ Nueva orden"
+
+This is pure navigation — pushes the [Catalog](/guides/catalog) screen and clears any in-memory cart.
+
+## Empty state
+
+Fire the list call with the user's default scope. If `response.total === 0`, show the "Aún no tienes órdenes" message and an "Ir al catálogo" button that pushes the catalog screen.
+
+## Order detail
+
+### Initial fetch
+
+```
+GET /api/orders/v1/{orderId}
+```
+
+Returns the full `OrderDTO`:
+
+- `orderNumber`, `shipmentNumber`, `invoiceNumber`
+- `deliveryStatus` (current step)
+- `deliveryStatusHistory` (the tracking timeline, see below)
+- `lineItems` with product info, unit price, discount, line total
+- `client` (embedded) — name, addresses, contact
+- `notes`, `internalNotes`
+- `subtotal`, `discountsTotal`, `chargesTotal`, `taxTotal`, `total`
+- `payments` — see also `GET /api/orders/v1/{orderId}/payments`
+
+Only run the dedicated payments call if you need to mutate them — for read, the embedded `payments` array on `OrderDTO` is sufficient.
+
+### Tracking timeline (SEGUIMIENTO)
+
+The timeline (`Confirmada → Preparada → En tránsito → Entregada`) is rendered from `OrderDTO.deliveryStatusHistory` — an array of `{ deliveryStatusId, deliveryStatusName, changedAt, changedBy }`. The current step is the entry with the latest `changedAt`. Future steps (statuses the order has not yet reached) are inferred from the org's `deliveryStatuses` ordering:
+
+```
+GET /api/orders/v1/delivery-statuses
+```
+
+Render every status in `sortOrder`, marking the ones present in `deliveryStatusHistory` as completed and the next one as the active step.
+
+### Editing products on the order
+
+Gated by `orders.edit`. The line-items editor wraps the same `UpdateOrderRequest` shape used at creation time:
+
+```
+PUT /api/orders/v1/{orderId}
+```
+
+The server re-validates totals, recomputes charges and returns the new `OrderDTO`.
+
+### Editing notes
+
+There is no dedicated note endpoint — notes are part of `UpdateOrderRequest`. The pencil icon next to "Notas generales" and "Notas internas" reuses `PUT /api/orders/v1/{orderId}` with just the relevant field populated.
+
+### Status transitions
+
+The detail screen offers (depending on permissions) transitions on the order itself:
+
+| Action | Method · Path |
+|---|---|
+| Change order status (e.g. confirm a draft) | `PATCH /api/orders/v1/{id}/status` |
+| Change delivery status (advance the timeline) | `PATCH /api/orders/v1/{id}/delivery-status` |
+| Mark as invoiced (post-hoc) | `PATCH /api/orders/v1/{id}/invoice` |
+| Void the order | `PATCH /api/orders/v1/{id}/void` |
+
+Each returns the updated `OrderDTO`. Refresh the timeline from the response.
+
+### Action buttons
+
+- **Factura PDF** — `GET /api/orders/v1/{orderId}/invoice/pdf`, returns `application/pdf`. Hide if `invoiceNumber` is null.
+- **Ticket Zebra** — see [Gaps](#gaps).
+- **Duplicar pedido** — see [Gaps](#gaps).
+
+## Endpoint cheat sheet
+
+| UI element | Method · Path | DTO |
+|---|---|---|
+| Orders list | `GET /api/search/v1/orders` | `PaginatedResponse<OrderDTO>` |
+| Status / payment counts | `GET /api/search/v1/orders/counts` | `OrderCountsResponse` |
+| Sales rep dropdown | `GET /api/organizations/v1/staff` | `PaginatedResponse<StaffDTO>` |
+| Delivery statuses (timeline scaffold) | `GET /api/orders/v1/delivery-statuses` | `DeliveryStatusDTO[]` |
+| Order detail | `GET /api/orders/v1/{id}` | `OrderDTO` |
+| Order payments (mutable) | `GET /api/orders/v1/{id}/payments` | `PaymentDTO[]` |
+| Update order / line items / notes | `PUT /api/orders/v1/{id}` | `UpdateOrderRequest` → `OrderDTO` |
+| Change status | `PATCH /api/orders/v1/{id}/status` | `OrderDTO` |
+| Change delivery status | `PATCH /api/orders/v1/{id}/delivery-status` | `OrderDTO` |
+| Mark invoiced | `PATCH /api/orders/v1/{id}/invoice` | `OrderDTO` |
+| Void | `PATCH /api/orders/v1/{id}/void` | `OrderDTO` |
+| Invoice PDF | `GET /api/orders/v1/{id}/invoice/pdf` | `application/pdf` |
+
+## Gaps
+
+- **Duplicar pedido.** No `POST /orders/v1/{id}/duplicate` endpoint exists. The reference implementation reads the order via `GET /orders/v1/{id}`, copies `clientId`, `warehouseId`, `lineItems` and `charges` into a fresh `CreateOrderRequest`, and re-uses the [Cart → Checkout](/guides/cart-checkout) flow. A server-side duplicate would simplify this and preserve audit lineage.
+- **Ticket Zebra (ZPL).** Same gap as the [confirmation screen](/guides/cart-checkout#step-3--confirmation). Either add `GET /api/orders/v1/{id}/ticket?format=zpl` or generate the ZPL on the device from the OrderDTO.
+- **Export filtered list to PDF.** "Exportar" should output the rows currently visible. There is no `POST /api/search/v1/orders/export` today; add one that mirrors the search query string and returns a PDF/CSV.
+- **Tracking timeline order.** `deliveryStatusHistory` does not currently include the *next* step's expected timestamp (ETA). The mobile spec only renders historic timestamps, so this is not blocking — but flag it if a future "ETA next step" requirement appears.

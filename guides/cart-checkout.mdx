@@ -1,0 +1,194 @@
+---
+title: 'Cart, checkout & confirmation'
+description: 'The three-step order flow on the mobile app — endpoint by endpoint'
+---
+
+This guide covers the full path from the cart screen to the confirmation screen, including order creation, charges, payments and credit memos. Visual spec: [DIS-598](https://linear.app/distrifyllc/issue/DIS-598).
+
+```
+┌──────────────┐    ┌──────────────┐    ┌────────────────┐
+│  ① Carrito   │ -> │   ② Pago     │ -> │ ③ Confirmación │
+└──────────────┘    └──────────────┘    └────────────────┘
+```
+
+The cart lives entirely client-side — there are **no** add-to-line / remove-line endpoints. The whole basket is materialised once at checkout via a single `POST /api/orders/v1`.
+
+## Step 1 — Cart
+
+### Lookups when the cart opens
+
+<CardGroup cols={2}>
+  <Card title="GET /api/orders/v1/charge-types" icon="receipt">
+    Returns `PaginatedResponse<ChargeTypeDTO>`. Drives the **CARGOS** section (shipping, IVA, card commissions). Each `ChargeTypeDTO` carries a `defaultActive` flag — render those pre-checked.
+  </Card>
+  <Card title="POST /api/products/v1/price-lists/by-products" icon="dollar-sign">
+    Already used by the catalog. Re-issue if the client changed since the catalog screen so cart line prices are correct.
+  </Card>
+</CardGroup>
+
+### Last sale price hint
+
+Each line displays "Última venta: $272.50". Fetch per line with:
+
+```
+GET /api/orders/v1/clients/{clientId}/products/{productId}/price-history?limit=1
+```
+
+Returns an array of `{ unitPrice, quantity, orderNumber, createdAt }`. Use the first entry's `unitPrice` for the hint; render nothing if the array is empty.
+
+### Editing prices and discounts
+
+Both are local state — there is no in-flight endpoint until the order is created. The backend re-validates the values on `POST /orders/v1` against the staff member's permissions:
+
+- `orders.modify_prices` — gates editing the `unitPrice` field.
+- `orders.apply_discounts` — gates editing the `discount` field per line.
+
+Read both keys from [`/staff/{id}/permissions`](/api-reference/staff/permissions) and disable the inputs accordingly.
+
+### Save as draft
+
+The "Guardar como borrador" button creates the order with `status: "DRAFT"`. Same payload as the regular `POST /orders/v1` below — only the status differs.
+
+## Step 2 — Checkout
+
+### Pre-flight calls
+
+When the user taps "Continuar al pago", run in parallel:
+
+| UI section | Method · Path | DTO |
+|---|---|---|
+| Client card | `GET /api/clients/v1/{clientId}` | `ClientDTO` |
+| Addresses | `GET /api/clients/v1/{clientId}/addresses` | `ClientAddressDTO[]` |
+| Payment methods | `GET /api/orders/v1/payment-methods` | `PaginatedResponse<PaymentMethodDTO>` |
+| Payment terms | `GET /api/orders/v1/payment-terms` | `PaginatedResponse<PaymentTermDTO>` |
+| Open credit memos | `GET /api/orders/v1/credit-memos?clientId={clientId}` | `PaginatedResponse<CreditMemoDTO>` |
+
+### Address card
+
+The dropdowns are populated from `GET /clients/{clientId}/addresses`. Default delivery = the address with `isDefaultShipping: true`. The "La dirección de facturación es la misma que la de entrega" checkbox just decides whether to send a separate `billingAddressId` in the order payload.
+
+### Quick-action toggles
+
+- **Marcar como entregado** sets the order's `deliveryStatusId` at creation time to the org's "Delivered" status (look it up from `GET /api/orders/v1/delivery-statuses`). The server will treat the order as already delivered, skipping the usual logistics flow.
+- **Marcar como facturado** sets `markAsInvoiced: true` in the `CreateOrderRequest`. When the order is confirmed the invoice service auto-generates the CFDI synchronously and the response includes the `invoiceNumber`.
+
+### Notes
+
+- `notes` — appears on customer-facing PDFs (the "GENERALES" textarea, with the *Visibles en factura* badge).
+- `internalNotes` — staff-only (the "INTERNAS" textarea).
+
+Both ship as plain strings inside the order payload.
+
+### Confirm — the actual POST
+
+```
+POST /api/orders/v1
+Content-Type: application/json
+```
+
+Body shape (`CreateOrderRequest`):
+
+```json
+{
+  "clientId": "...",
+  "warehouseId": "...",
+  "status": "CONFIRMED",
+  "shippingAddressId": "...",
+  "billingAddressId": "...",
+  "expectedDeliveryDate": "2026-05-09",
+  "deliveryWindow": "09:00-13:00",
+  "deliveryStatusId": "...",
+  "markAsInvoiced": true,
+  "notes": "...",
+  "internalNotes": "...",
+  "lineItems": [
+    {
+      "productId": "...",
+      "unitOfMeasureId": "...",
+      "quantity": 5,
+      "unitPrice": 277.84,
+      "discount": { "type": "PERCENT", "value": 5 }
+    }
+  ],
+  "charges": [
+    { "chargeTypeId": "...", "active": true }
+  ],
+  "payments": [
+    {
+      "paymentMethodId": "...",
+      "amount": 5000,
+      "reference": "Visa •••• 4421",
+      "creditMemoId": null
+    }
+  ]
+}
+```
+
+Returns the created `OrderDTO`, which carries the public `orderNumber` (e.g. `DF-23981`), the `invoiceNumber` if `markAsInvoiced` was set, and the full computed totals.
+
+### Adding a payment after creation
+
+The mobile flow attaches payments inside the create payload. If the staff member also wants to record an additional payment **after** confirmation, use the standalone endpoint:
+
+```
+POST /api/orders/v1/payments
+Body: CreatePaymentRequest (includes orderId)
+```
+
+### Applying a credit memo
+
+Credit memos are attached as a payment line with `creditMemoId` set — the backend will void the appropriate amount of the memo. To preview, GET the memo:
+
+```
+GET /api/orders/v1/credit-memos/{id}
+```
+
+## Step 3 — Confirmation
+
+The response from `POST /orders/v1` is everything the screen needs:
+
+```json
+{
+  "id": "...",
+  "orderNumber": "DF-23981",
+  "invoiceNumber": "F-A-00481",
+  "total": 5699.50,
+  "lineItems": [...],
+  "expectedDeliveryDate": "2026-05-09",
+  ...
+}
+```
+
+Render the success state directly from this payload — no extra GET required.
+
+### Download artifacts
+
+- **Factura PDF.** Available when `invoiceNumber` is non-null:
+  ```
+  GET /api/orders/v1/{orderId}/invoice/pdf
+  ```
+  Responds with `application/pdf`.
+- **Ticket Zebra (ZPL).** **No endpoint exists today** — the print template service generates HTML/PDF only. See [Gaps](#gaps).
+
+## Endpoint cheat sheet
+
+| UI element | Method · Path | DTO |
+|---|---|---|
+| Charges config | `GET /api/orders/v1/charge-types` | `ChargeTypeDTO` |
+| Last sale price hint | `GET /api/orders/v1/clients/{cid}/products/{pid}/price-history` | inline |
+| Payment methods | `GET /api/orders/v1/payment-methods` | `PaymentMethodDTO` |
+| Payment terms | `GET /api/orders/v1/payment-terms` | `PaymentTermDTO` |
+| Open credit memos | `GET /api/orders/v1/credit-memos?clientId=...` | `CreditMemoDTO` |
+| Client addresses | `GET /api/clients/v1/{clientId}/addresses` | `ClientAddressDTO` |
+| Save draft / confirm order | `POST /api/orders/v1` | `CreateOrderRequest` → `OrderDTO` |
+| Mark as invoiced after | `PATCH /api/orders/v1/{id}/invoice` | `OrderDTO` |
+| Extra payment after | `POST /api/orders/v1/payments` | `PaymentDTO` |
+| Invoice PDF | `GET /api/orders/v1/{id}/invoice/pdf` | `application/pdf` |
+
+## Gaps
+
+- **Zebra ZPL ticket.** The confirmation screen offers `Ticket Zebra · ZPL · 80mm`. No endpoint emits ZPL today. Either:
+  - Add a `GET /api/orders/v1/{id}/ticket?format=zpl` returning `text/plain` ZPL, or
+  - Generate the ZPL on the device from the OrderDTO using a library like `react-native-zpl`.
+- **Quotation flow.** When the catalog toggle is set to "Cotización", the same checkout UI must POST to `POST /api/quotes/v1` with a similar but distinct payload. Confirm field parity between `CreateOrderRequest` and the quote create request before reusing the form.
+- **Permission-driven UI for price/discount editing.** The keys `orders.modify_prices` and `orders.apply_discounts` are still being defined as part of the roles work (DIS-597). Until then, fall back to a single `orders.edit` key.

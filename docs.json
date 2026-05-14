@@ -18,6 +18,15 @@
             "pages": [
               "guides/login"
             ]
+          },
+          {
+            "group": "Mobile app",
+            "pages": [
+              "guides/catalog",
+              "guides/product-detail",
+              "guides/cart-checkout",
+              "guides/orders"
+            ]
           }
         ]
       },

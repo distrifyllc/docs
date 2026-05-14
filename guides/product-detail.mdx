@@ -1,0 +1,105 @@
+---
+title: 'Product detail screen'
+description: 'How the mobile product detail page assembles product data, prices, stock and the permission-gated inventory KPI panel'
+---
+
+The product detail screen is reached by tapping a product in the [Catalog](/guides/catalog). It shows the full image carousel, packaging info, prices, stock at the active warehouse, and a permission-gated inventory KPI panel with incoming POs, quoted inventory and the nearest lot expiration. Visual spec: [DIS-599](https://linear.app/distrifyllc/issue/DIS-599).
+
+## Required context
+
+The screen receives the `productId` from the catalog route and inherits two contextual values from the catalog session:
+
+- `clientId` — used to fetch the price list applicable to this client.
+- `warehouseId` — used to scope stock and the inventory KPIs.
+
+## Base data fetch
+
+Run in parallel as soon as the screen opens:
+
+<CardGroup cols={2}>
+  <Card title="GET /api/products/v1/{id}" icon="box">
+    Returns `ProductDTO`. Contains `name`, `brand`, `category`, the primary identifier (`sku`/`upc`), `piecesPerPackaging`, `allowSaleOutOfStock`, default `unitOfMeasureId` and the configured expiration date if any.
+  </Card>
+  <Card title="GET /api/products/v1/{id}/media" icon="images">
+    Returns `ProductMediaDTO[]` for the image carousel. Single-image products render a static photo; multi-image render arrows + swipe.
+  </Card>
+  <Card title="GET /api/products/v1/{id}/unit-of-measures" icon="ruler">
+    Returns `ProductUnitOfMeasureDTO[]` to compute the unit-vs-case price split shown beside the headline price.
+  </Card>
+  <Card title="GET /api/products/v1/price-lists/uom?productId={id}&clientId={clientId}" icon="dollar-sign">
+    Returns `UomPriceListResponse` with the case price and the per-UOM breakdown for the active client.
+  </Card>
+</CardGroup>
+
+## Stock at the active warehouse
+
+The basic stock indicator on the screen ("33 disponibles · Sucursal Centro") is part of the inventory details endpoint and does **not** require the `products.view_stock` permission:
+
+```
+GET /api/inventory/v1/stock/{productId}/details?warehouseId=<active>
+```
+
+Returns `StockDetailsDTO`. Use `available` for the green pill at the top of the right column.
+
+## The inventory KPI panel (permission-gated)
+
+The four KPI cards are gated by `products.view_stock`. Hide the "Ver detalle" button if the permission key is missing from the user's [`/staff/{id}/permissions`](/api-reference/staff/permissions) list.
+
+| Card | Source |
+|---|---|
+| **Disponible** | `StockDetailsDTO.available` from the same call above. |
+| **Disponible sin stock** | `ProductDTO.allowSaleOutOfStock` toggle + `StockDetailsDTO.sellOutOfStockAvailable` (extra qty allowed beyond physical stock). |
+| **Inventario entrante** | `POST /api/purchases/v1/incoming-qty` with `{ "productIds": [id] }` → `ProductIncomingQtyResponse.items[id]`. Gives the **total** incoming qty but does not include PO reference or ETA — see [Gaps](#gaps). |
+| **Inventario cotizado** | `POST /api/quotes/v1/quoted-qty` with `{ "productIds": [id] }` → `ProductQuotedQtyResponse`. |
+
+### Expiration & "Lote más próximo"
+
+The "Fecha de caducidad" line with the "Lote más próximo" badge needs the **lot with the soonest expiry** for the product at the active warehouse. There is no dedicated endpoint — the reference flow queries:
+
+```
+GET /api/inventory/v1/lots?productId=<id>&warehouseId=<active>
+```
+
+Returns `LotDTO[]`. Sort client-side by `expirationDate` ascending and take the first. If the product has no lots tracked, hide the row.
+
+## Add to cart
+
+There is **no add-to-cart endpoint** — the cart lives entirely on the client (see the [Cart, Checkout & Confirmation](/guides/cart-checkout) guide for what gets POSTed at checkout). The button persists the line in local state with:
+
+```ts
+{
+  productId,
+  quantity,
+  unitPrice,     // from UomPriceListResponse for the active client
+  unitOfMeasureId,
+  discount: 0,
+}
+```
+
+The dynamic button label `Agregar 5 cajas · $2,040.50` is computed locally from `quantity × case price`.
+
+## Re-fetch on context change
+
+If either the **client** or the **warehouse** changes while the user is on the screen:
+
+- **Client change** → re-issue the price list call. The stock and inventory KPIs do not depend on the client.
+- **Warehouse change** → re-issue `stock/{id}/details` and `lots`. The KPIs Inventory entrante / cotizado are computed across warehouses today; re-issue if you want them scoped per warehouse (see [Gaps](#gaps)).
+
+## Endpoint cheat sheet
+
+| UI element | Method · Path | DTO |
+|---|---|---|
+| Product header | `GET /api/products/v1/{id}` | `ProductDTO` |
+| Image carousel | `GET /api/products/v1/{id}/media` | `ProductMediaDTO[]` |
+| UOM split | `GET /api/products/v1/{id}/unit-of-measures` | `ProductUnitOfMeasureDTO[]` |
+| Prices | `GET /api/products/v1/price-lists/uom` | `UomPriceListResponse` |
+| Stock indicator + Disponible card | `GET /api/inventory/v1/stock/{id}/details` | `StockDetailsDTO` |
+| Inventario entrante | `POST /api/purchases/v1/incoming-qty` | `ProductIncomingQtyResponse` |
+| Inventario cotizado | `POST /api/quotes/v1/quoted-qty` | `ProductQuotedQtyResponse` |
+| Lote más próximo | `GET /api/inventory/v1/lots` | `LotDTO[]` |
+
+## Gaps
+
+- **PO reference + ETA per product.** The Linear spec calls for `OC-1842 · 12 may` under "Inventario entrante". `POST /purchases/v1/incoming-qty` only returns the total qty — there is no endpoint that breaks the incoming qty down per purchase order with ETA. Add `POST /purchases/v1/incoming-details` returning `{ productId, purchases: [{ number, expectedArrivalDate, qty }] }` before this card can be implemented.
+- **Per-warehouse incoming/quoted qty.** The current endpoints aggregate across warehouses. Decide with the backend team whether the mobile KPI panel should be scoped to the active warehouse and add a `warehouseId` filter accordingly.
+- **Expiration in `ProductDTO`.** Some specs reference `ProductDTO.expirationDate` directly, but the source of truth is the per-lot table. Until that's clarified, prefer the `lots` endpoint and surface the nearest one.

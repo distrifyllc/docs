@@ -125,6 +125,32 @@ onAuthStateChanged(auth, async (user) => {
 });
 ```
 
+## Mobile-only: biometric login
+
+On the mobile app the Login screen offers a Face ID / Fingerprint shortcut **after** the first successful sign-in. The flow is entirely client-side — Distrify has no biometric endpoint:
+
+1. After the first successful Firebase sign-in, prompt the user to enable biometric login.
+2. On opt-in, persist Firebase's **refresh token** in the device secure store (Keychain on iOS, Keystore on Android). Never store the password.
+3. On subsequent launches, gate the secure-store read on a Face ID / Fingerprint check. If it passes, hand the refresh token back to the Firebase SDK to mint a fresh ID token, then continue from step 2 of this guide.
+4. If biometric hardware is not available, hide the button entirely.
+
+Biometric can be disabled from the in-app settings; that just wipes the refresh token from the secure store.
+
+## Forgot password
+
+The "¿Olvidaste tu contraseña?" link is also pure Firebase — Distrify does not own the reset flow. Use the standard SDK call:
+
+```ts
+import { sendPasswordResetEmail } from "firebase/auth";
+
+await sendPasswordResetEmail(auth, email, {
+  url: "https://jadix.distrify.us/auth/action",
+  handleCodeInApp: false,
+});
+```
+
+Firebase sends the user an email with a reset link; once they set a new password they're redirected back to the login screen and complete the flow from step 1.
+
 ## Switching organizations later
 
 If the user wants to change the active organization without signing out, call `PUT /api/users/v1/auth/default-organization` with the new `organizationId` and re-run step 4. There is no header or cookie to keep in sync on the client.

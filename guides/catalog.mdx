@@ -1,0 +1,166 @@
+---
+title: 'Catalog screen'
+description: 'How the mobile catalog orchestrates products, clients, prices, inventory and filters'
+---
+
+The Catalog is the landing screen after sign-in. It lets a sales rep browse the org's products, pick the active client, build an order, and switch warehouses or filter on-the-fly. This guide documents the endpoint orchestration; the visual spec lives in [DIS-595](https://linear.app/distrifyllc/issue/DIS-595).
+
+## Mental model
+
+The catalog is driven by **two pieces of context**:
+
+- The **active client** — determines which price list to use and unlocks "recently purchased".
+- The **active warehouse** — determines stock visibility. May be locked to the user's default if they don't have the warehouse-switch permission.
+
+Every product list and product detail call must be re-issued when either context changes.
+
+## On screen open
+
+When the user lands on the catalog after login, run these calls in parallel:
+
+<CardGroup cols={2}>
+  <Card title="GET /api/products/v1" icon="boxes-stacked">
+    Paginated `ProductDTO[]` for the default view (Order mode, default warehouse, no filters).
+  </Card>
+  <Card title="GET /api/inventory/v1/warehouses" icon="warehouse">
+    `WarehouseDTO[]` to populate the warehouse selector and resolve the user's default.
+  </Card>
+  <Card title="GET /api/products/v1/brands" icon="tag">
+    `PaginatedResponse<BrandDTO>` for the sidebar filter.
+  </Card>
+  <Card title="GET /api/products/v1/categories" icon="folder-tree">
+    `PaginatedResponse<CategoryDTO>` for the sidebar filter.
+  </Card>
+</CardGroup>
+
+## Client selector
+
+The client picker is its own modal/dropdown. Fetch with:
+
+```
+GET /api/clients/v1?page=1&pageSize=20&search=<term>
+```
+
+Returns `PaginatedResponse<ClientDTO>`. Selecting a client triggers two refreshes:
+
+1. **Refetch prices** for everything currently in the cart and the visible product page (see [Pricing](#pricing) below).
+2. **Show the "Recientemente comprados" button** that filters to products purchased by this client in their last 5 orders.
+
+### Recently purchased
+
+There is no dedicated endpoint for "products from the client's last 5 orders". The reference implementation builds the set client-side:
+
+```
+GET /api/orders/v1?clientId=<clientId>&page=1&pageSize=5
+```
+
+→ collect `productId` from every `lineItem` → use the union as a filter against the catalog.
+
+## Search and filters
+
+The catalog uses the `search` service (not the raw `products` service) so that full-text search by `name`, `sku` and `upc` is consistent with the rest of the platform:
+
+```
+GET /api/search/v1/products
+```
+
+| Query param | Type | Notes |
+|---|---|---|
+| `q` | string | name, SKU or UPC. The barcode scanner just feeds the scanned value here. |
+| `categoryIds[]` | uuid[] | multi-select |
+| `brandIds[]` | uuid[] | multi-select |
+| `hasStock` | `"true" \| "false"` | maps to the "En stock" / "Sin stock" radio in the secondary filters |
+| `status` | string | reserved for the order/quotation toggle to filter listing visibility |
+| `page` | int | 1-indexed |
+| `pageSize` | int | default 20 |
+
+Response is `PaginatedResponse<ProductDTO>`.
+
+<Note>
+**Dynamic category × brand counts.** The Linear spec calls for category and brand pills whose counts update against the current filter (e.g. selecting "Adidas" reduces the category counts to only categories that contain Adidas products). The current API exposes `listBrands` and `listCategories` but **without count aggregation**. Either compute counts client-side from the product page result, or coordinate with backend to add a `?withCounts=true` flag — see [Gaps](#gaps).
+</Note>
+
+## Product card data
+
+Each `ProductDTO` already carries `brand`, `name`, the primary identifier (`sku` or `upc` per the org's `primaryProductIdentifier` setting) and the configured pieces per packaging. Two pieces are fetched separately:
+
+### Images
+
+`ProductDTO` does not embed the gallery. For a paged product list it's cheaper to do one bulk call:
+
+```
+POST /api/products/v1/media/by-product-ids
+Body: { "productIds": ["...", "..."] }
+```
+
+Returns `Record<productId, ProductMediaDTO[]>`. The single-image-product → no carousel; multi-image → arrows on hover/swipe.
+
+### Stock per warehouse
+
+For the active warehouse, the catalog needs the available qty. Use the bulk endpoint:
+
+```
+POST /api/inventory/v1/stock/bulk
+Body: { "productIds": [...], "warehouseId": "..." }
+```
+
+Returns `BulkStockResponse` keyed by productId.
+
+## Pricing
+
+Prices on the card reflect the **client-specific price list** by Unit of Measure. The reference flow:
+
+```
+GET /api/products/v1/price-lists/uom?productId=<id>&clientId=<id>
+```
+
+Returns `UomPriceListResponse`. For the catalog grid, prefer the bulk variant:
+
+```
+POST /api/products/v1/price-lists/by-products
+Body: { "productIds": [...], "clientId": "..." }
+```
+
+When the client selector changes, re-issue this call for **every product currently in the cart** as well as the visible page — line totals must reflect the new price list immediately.
+
+## Order vs Quotation toggle
+
+This is a UI-only flag until checkout. It doesn't change any GET call. The mode is captured at order-creation time:
+
+- **Orden** → `POST /api/orders/v1` (see the [Cart, Checkout & Confirmation](/guides/cart-checkout) guide)
+- **Cotización** → `POST /api/quotes/v1` with the same line shape
+
+When the user toggles to Cotización, show the warning banner from the spec; the call hits a different service but the cart UI stays the same.
+
+## Barcode scanner
+
+The scanner is a thin wrapper around the search endpoint:
+
+```
+GET /api/search/v1/products?q=<scanned-upc>&pageSize=1
+```
+
+If `results.length === 1`, jump to its [Product Detail](/guides/product-detail) screen. If `0`, show a "Not found" toast. If `> 1`, render the search-results list.
+
+## Endpoint cheat sheet
+
+| UI element | Method · Path | DTO |
+|---|---|---|
+| Product grid / list | `GET /api/search/v1/products` | `PaginatedResponse<ProductDTO>` |
+| Product images (bulk) | `POST /api/products/v1/media/by-product-ids` | `Record<id, ProductMediaDTO[]>` |
+| Stock per warehouse (bulk) | `POST /api/inventory/v1/stock/bulk` | `BulkStockResponse` |
+| Prices per client (bulk) | `POST /api/products/v1/price-lists/by-products` | `Record<id, UomPriceListResponse>` |
+| Brands sidebar | `GET /api/products/v1/brands` | `PaginatedResponse<BrandDTO>` |
+| Categories sidebar | `GET /api/products/v1/categories` | `PaginatedResponse<CategoryDTO>` |
+| Client picker | `GET /api/clients/v1` | `PaginatedResponse<ClientDTO>` |
+| Warehouse selector | `GET /api/inventory/v1/warehouses` | `PaginatedResponse<WarehouseDTO>` |
+| Recently purchased | `GET /api/orders/v1?clientId=...&pageSize=5` | `PaginatedResponse<OrderDTO>` |
+| Barcode scan | `GET /api/search/v1/products?q=<upc>` | `PaginatedResponse<ProductDTO>` |
+
+## Gaps
+
+These are mentioned in the Linear spec but have no matching endpoint today; coordinate with the backend team before relying on them:
+
+- **Category × Brand cross-filter counts.** No `withCounts` flag on `listBrands` / `listCategories`. Today the frontend must either compute the counts from the product page or hit the listings repeatedly with the active filter.
+- **"Last 5 orders" semantics.** The reference flow paginates `GET /orders` with `pageSize=5`. There is no contract that guarantees ordering; if the field reps complain about stale "recently purchased" lists, add `orderBy=createdAt,desc` to the query and confirm the backend honours it.
+- **Warehouse permission gate.** The org-side flag controlling whether a user can switch warehouses is not exposed in `StaffDTO`. The frontend currently keys off `permissions[]` returned by [`GET /staff/{id}/permissions`](/api-reference/staff/permissions) — pick a key (e.g. `inventory.switch_warehouse`) and align with backend before shipping.
