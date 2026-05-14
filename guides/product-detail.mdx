@@ -17,17 +17,17 @@ The screen receives the `productId` from the catalog route and inherits two cont
 Run in parallel as soon as the screen opens:
 
 <CardGroup cols={2}>
-  <Card title="GET /api/products/v1/{id}" icon="box">
+  <Card title="GET /api/products/v1/{id}" icon="box" href="/api-reference/products/get">
     Returns `ProductDTO`. Contains `name`, `brand`, `category`, the primary identifier (`sku`/`upc`), `piecesPerPackaging`, `allowSaleOutOfStock`, default `unitOfMeasureId` and the configured expiration date if any.
   </Card>
-  <Card title="GET /api/products/v1/{id}/media" icon="images">
+  <Card title="GET /api/products/v1/{id}/media" icon="images" href="/api-reference/products/media">
     Returns `ProductMediaDTO[]` for the image carousel. Single-image products render a static photo; multi-image render arrows + swipe.
   </Card>
-  <Card title="GET /api/products/v1/{id}/unit-of-measures" icon="ruler">
+  <Card title="GET /api/products/v1/{id}/unit-of-measures" icon="ruler" href="/api-reference/products/unit-of-measures">
     Returns `ProductUnitOfMeasureDTO[]` to compute the unit-vs-case price split shown beside the headline price.
   </Card>
-  <Card title="GET /api/products/v1/price-lists/uom?productId={id}&clientId={clientId}" icon="dollar-sign">
-    Returns `UomPriceListResponse` with the case price and the per-UOM breakdown for the active client.
+  <Card title="POST /api/products/v1/price-lists/by-products" icon="dollar-sign" href="/api-reference/products/prices-bulk">
+    Returns the per-UOM price breakdown for the active client. Use the bulk endpoint with a single `productId` and `clientId` to get `UomPriceList`.
   </Card>
 </CardGroup>
 
@@ -49,8 +49,8 @@ The four KPI cards are gated by `products.view_stock`. Hide the "Ver detalle" bu
 |---|---|
 | **Disponible** | `StockDetailsDTO.available` from the same call above. |
 | **Disponible sin stock** | `ProductDTO.allowSaleOutOfStock` toggle + `StockDetailsDTO.sellOutOfStockAvailable` (extra qty allowed beyond physical stock). |
-| **Inventario entrante** | `POST /api/purchases/v1/incoming-qty` with `{ "productIds": [id] }` → `ProductIncomingQtyResponse.items[id]`. Gives the **total** incoming qty but does not include PO reference or ETA — see [Gaps](#gaps). |
-| **Inventario cotizado** | `POST /api/quotes/v1/quoted-qty` with `{ "productIds": [id] }` → `ProductQuotedQtyResponse`. |
+| **Inventario entrante** | [`POST /api/purchases/v1/incoming-qty`](/api-reference/purchases/incoming-qty) with `{ "productIds": [id] }` → `ProductIncomingQtyResponse.items[id]`. Gives the **total** incoming qty but does not include PO reference or ETA — see [Gaps](#gaps). |
+| **Inventario cotizado** | [`POST /api/quotes/v1/quoted-qty`](/api-reference/quotes/quoted-qty) with `{ "productIds": [id] }` → `ProductQuotedQtyResponse`. |
 
 ### Expiration & "Lote más próximo"
 
@@ -89,14 +89,14 @@ If either the **client** or the **warehouse** changes while the user is on the s
 
 | UI element | Method · Path | DTO |
 |---|---|---|
-| Product header | `GET /api/products/v1/{id}` | `ProductDTO` |
-| Image carousel | `GET /api/products/v1/{id}/media` | `ProductMediaDTO[]` |
-| UOM split | `GET /api/products/v1/{id}/unit-of-measures` | `ProductUnitOfMeasureDTO[]` |
-| Prices | `GET /api/products/v1/price-lists/uom` | `UomPriceListResponse` |
-| Stock indicator + Disponible card | `GET /api/inventory/v1/stock/{id}/details` | `StockDetailsDTO` |
-| Inventario entrante | `POST /api/purchases/v1/incoming-qty` | `ProductIncomingQtyResponse` |
-| Inventario cotizado | `POST /api/quotes/v1/quoted-qty` | `ProductQuotedQtyResponse` |
-| Lote más próximo | `GET /api/inventory/v1/lots` | `LotDTO[]` |
+| Product header | [`GET /api/products/v1/{id}`](/api-reference/products/get) | `ProductDTO` |
+| Image carousel | [`GET /api/products/v1/{id}/media`](/api-reference/products/media) | `ProductMediaDTO[]` |
+| UOM split | [`GET /api/products/v1/{id}/unit-of-measures`](/api-reference/products/unit-of-measures) | `ProductUnitOfMeasureDTO[]` |
+| Prices | [`POST /api/products/v1/price-lists/by-products`](/api-reference/products/prices-bulk) | `UomPriceList` |
+| Stock indicator + Disponible card | [`GET /api/inventory/v1/stock/{id}/details`](/api-reference/inventory/stock-details) | `StockDetailsDTO` |
+| Inventario entrante | [`POST /api/purchases/v1/incoming-qty`](/api-reference/purchases/incoming-qty) | `ProductIncomingQtyResponse` |
+| Inventario cotizado | [`POST /api/quotes/v1/quoted-qty`](/api-reference/quotes/quoted-qty) | `ProductQuotedQtyResponse` |
+| Lote más próximo | [`GET /api/inventory/v1/lots`](/api-reference/inventory/lots) | `LotDTO[]` |
 
 ## Gaps
 

@@ -11,17 +11,17 @@ This guide covers the full path from the cart screen to the confirmation screen,
 └──────────────┘    └──────────────┘    └────────────────┘
 ```
 
-The cart lives entirely client-side — there are **no** add-to-line / remove-line endpoints. The whole basket is materialised once at checkout via a single `POST /api/orders/v1`.
+The cart lives entirely client-side — there are **no** add-to-line / remove-line endpoints. The whole basket is materialised once at checkout via a single [`POST /api/orders/v1`](/api-reference/orders/create).
 
 ## Step 1 — Cart
 
 ### Lookups when the cart opens
 
 <CardGroup cols={2}>
-  <Card title="GET /api/orders/v1/charge-types" icon="receipt">
+  <Card title="GET /api/orders/v1/charge-types" icon="receipt" href="/api-reference/orders/charge-types">
     Returns `PaginatedResponse<ChargeTypeDTO>`. Drives the **CARGOS** section (shipping, IVA, card commissions). Each `ChargeTypeDTO` carries a `defaultActive` flag — render those pre-checked.
   </Card>
-  <Card title="POST /api/products/v1/price-lists/by-products" icon="dollar-sign">
+  <Card title="POST /api/products/v1/price-lists/by-products" icon="dollar-sign" href="/api-reference/products/prices-bulk">
     Already used by the catalog. Re-issue if the client changed since the catalog screen so cart line prices are correct.
   </Card>
 </CardGroup>
@@ -57,11 +57,11 @@ When the user taps "Continuar al pago", run in parallel:
 
 | UI section | Method · Path | DTO |
 |---|---|---|
-| Client card | `GET /api/clients/v1/{clientId}` | `ClientDTO` |
-| Addresses | `GET /api/clients/v1/{clientId}/addresses` | `ClientAddressDTO[]` |
-| Payment methods | `GET /api/orders/v1/payment-methods` | `PaginatedResponse<PaymentMethodDTO>` |
-| Payment terms | `GET /api/orders/v1/payment-terms` | `PaginatedResponse<PaymentTermDTO>` |
-| Open credit memos | `GET /api/orders/v1/credit-memos?clientId={clientId}` | `PaginatedResponse<CreditMemoDTO>` |
+| Client card | [`GET /api/clients/v1/{clientId}`](/api-reference/clients/get) | `ClientDTO` |
+| Addresses | [`GET /api/clients/v1/{clientId}/addresses`](/api-reference/clients/addresses) | `ClientAddressDTO[]` |
+| Payment methods | [`GET /api/orders/v1/payment-methods`](/api-reference/orders/payment-methods) | `PaginatedResponse<PaymentMethodDTO>` |
+| Payment terms | [`GET /api/orders/v1/payment-terms`](/api-reference/orders/payment-terms) | `PaginatedResponse<PaymentTermDTO>` |
+| Open credit memos | [`GET /api/orders/v1/credit-memos?clientId={clientId}`](/api-reference/orders/credit-memos) | `PaginatedResponse<CreditMemoDTO>` |
 
 ### Address card
 
@@ -69,7 +69,7 @@ The dropdowns are populated from `GET /clients/{clientId}/addresses`. Default de
 
 ### Quick-action toggles
 
-- **Marcar como entregado** sets the order's `deliveryStatusId` at creation time to the org's "Delivered" status (look it up from `GET /api/orders/v1/delivery-statuses`). The server will treat the order as already delivered, skipping the usual logistics flow.
+- **Marcar como entregado** sets the order's `deliveryStatusId` at creation time to the org's "Delivered" status (look it up from [`GET /api/orders/v1/delivery-statuses`](/api-reference/orders/delivery-statuses)). The server will treat the order as already delivered, skipping the usual logistics flow.
 - **Marcar como facturado** sets `markAsInvoiced: true` in the `CreateOrderRequest`. When the order is confirmed the invoice service auto-generates the CFDI synchronously and the response includes the `invoiceNumber`.
 
 ### Notes
@@ -174,16 +174,16 @@ Render the success state directly from this payload — no extra GET required.
 
 | UI element | Method · Path | DTO |
 |---|---|---|
-| Charges config | `GET /api/orders/v1/charge-types` | `ChargeTypeDTO` |
-| Last sale price hint | `GET /api/orders/v1/clients/{cid}/products/{pid}/price-history` | inline |
-| Payment methods | `GET /api/orders/v1/payment-methods` | `PaymentMethodDTO` |
-| Payment terms | `GET /api/orders/v1/payment-terms` | `PaymentTermDTO` |
-| Open credit memos | `GET /api/orders/v1/credit-memos?clientId=...` | `CreditMemoDTO` |
-| Client addresses | `GET /api/clients/v1/{clientId}/addresses` | `ClientAddressDTO` |
-| Save draft / confirm order | `POST /api/orders/v1` | `CreateOrderRequest` → `OrderDTO` |
-| Mark as invoiced after | `PATCH /api/orders/v1/{id}/invoice` | `OrderDTO` |
-| Extra payment after | `POST /api/orders/v1/payments` | `PaymentDTO` |
-| Invoice PDF | `GET /api/orders/v1/{id}/invoice/pdf` | `application/pdf` |
+| Charges config | [`GET /api/orders/v1/charge-types`](/api-reference/orders/charge-types) | `ChargeTypeDTO` |
+| Last sale price hint | [`GET /api/orders/v1/clients/{cid}/products/{pid}/price-history`](/api-reference/orders/price-history) | inline |
+| Payment methods | [`GET /api/orders/v1/payment-methods`](/api-reference/orders/payment-methods) | `PaymentMethodDTO` |
+| Payment terms | [`GET /api/orders/v1/payment-terms`](/api-reference/orders/payment-terms) | `PaymentTermDTO` |
+| Open credit memos | [`GET /api/orders/v1/credit-memos?clientId=...`](/api-reference/orders/credit-memos) | `CreditMemoDTO` |
+| Client addresses | [`GET /api/clients/v1/{clientId}/addresses`](/api-reference/clients/addresses) | `ClientAddressDTO` |
+| Save draft / confirm order | [[`POST /api/orders/v1`](/api-reference/orders/create)](/api-reference/orders/create) | `CreateOrderRequest` → `OrderDTO` |
+| Mark as invoiced after | [`PATCH /api/orders/v1/{id}/invoice`](/api-reference/orders/mark-invoiced) | `OrderDTO` |
+| Extra payment after | [`POST /api/orders/v1/payments`](/api-reference/orders/create-payment) | `PaymentDTO` |
+| Invoice PDF | [`GET /api/orders/v1/{id}/invoice/pdf`](/api-reference/orders/invoice-pdf) | `application/pdf` |
 
 ## Gaps
 

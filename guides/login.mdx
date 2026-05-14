@@ -86,13 +86,13 @@ With the organization scope settled, fetch the three pieces of context the app n
 
 <CardGroup cols={3}>
   <Card title="Organization profile" href="/api-reference/organization/profile">
-    `GET /api/organizations/v1/profile` — name, logo, invoice prefix, defaults.
+    [`GET /api/organizations/v1/profile`](/api-reference/organization/profile) — name, logo, invoice prefix, defaults.
   </Card>
   <Card title="Staff profile" href="/api-reference/staff/profile">
-    `GET /api/organizations/v1/staff/profile` — the staff record for this user.
+    [`GET /api/organizations/v1/staff/profile`](/api-reference/staff/profile) — the staff record for this user.
   </Card>
   <Card title="Staff permissions" href="/api-reference/staff/permissions">
-    `GET /api/organizations/v1/staff/{id}/permissions` — flat list of permission keys to feed your authorization layer.
+    [`GET /api/organizations/v1/staff/{id}/permissions`](/api-reference/staff/permissions) — flat list of permission keys to feed your authorization layer.
   </Card>
 </CardGroup>
 
@@ -153,4 +153,4 @@ Firebase sends the user an email with a reset link; once they set a new password
 
 ## Switching organizations later
 
-If the user wants to change the active organization without signing out, call `PUT /api/users/v1/auth/default-organization` with the new `organizationId` and re-run step 4. There is no header or cookie to keep in sync on the client.
+If the user wants to change the active organization without signing out, call [`PUT /api/users/v1/auth/default-organization`](/api-reference/authentication/set-default-organization) with the new `organizationId` and re-run step 4. There is no header or cookie to keep in sync on the client.

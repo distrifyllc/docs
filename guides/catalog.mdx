@@ -19,16 +19,16 @@ Every product list and product detail call must be re-issued when either context
 When the user lands on the catalog after login, run these calls in parallel:
 
 <CardGroup cols={2}>
-  <Card title="GET /api/products/v1" icon="boxes-stacked">
+  <Card title="GET /api/products/v1" icon="boxes-stacked" href="/api-reference/products/list">
     Paginated `ProductDTO[]` for the default view (Order mode, default warehouse, no filters).
   </Card>
-  <Card title="GET /api/inventory/v1/warehouses" icon="warehouse">
+  <Card title="GET /api/inventory/v1/warehouses" icon="warehouse" href="/api-reference/inventory/warehouses">
     `WarehouseDTO[]` to populate the warehouse selector and resolve the user's default.
   </Card>
-  <Card title="GET /api/products/v1/brands" icon="tag">
+  <Card title="GET /api/products/v1/brands" icon="tag" href="/api-reference/products/brands">
     `PaginatedResponse<BrandDTO>` for the sidebar filter.
   </Card>
-  <Card title="GET /api/products/v1/categories" icon="folder-tree">
+  <Card title="GET /api/products/v1/categories" icon="folder-tree" href="/api-reference/products/categories">
     `PaginatedResponse<CategoryDTO>` for the sidebar filter.
   </Card>
 </CardGroup>
@@ -127,7 +127,7 @@ When the client selector changes, re-issue this call for **every product current
 
 This is a UI-only flag until checkout. It doesn't change any GET call. The mode is captured at order-creation time:
 
-- **Orden** → `POST /api/orders/v1` (see the [Cart, Checkout & Confirmation](/guides/cart-checkout) guide)
+- **Orden** → [`POST /api/orders/v1`](/api-reference/orders/create) (see the [Cart, Checkout & Confirmation](/guides/cart-checkout) guide)
 - **Cotización** → `POST /api/quotes/v1` with the same line shape
 
 When the user toggles to Cotización, show the warning banner from the spec; the call hits a different service but the cart UI stays the same.
@@ -146,16 +146,16 @@ If `results.length === 1`, jump to its [Product Detail](/guides/product-detail) 
 
 | UI element | Method · Path | DTO |
 |---|---|---|
-| Product grid / list | `GET /api/search/v1/products` | `PaginatedResponse<ProductDTO>` |
-| Product images (bulk) | `POST /api/products/v1/media/by-product-ids` | `Record<id, ProductMediaDTO[]>` |
-| Stock per warehouse (bulk) | `POST /api/inventory/v1/stock/bulk` | `BulkStockResponse` |
-| Prices per client (bulk) | `POST /api/products/v1/price-lists/by-products` | `Record<id, UomPriceListResponse>` |
-| Brands sidebar | `GET /api/products/v1/brands` | `PaginatedResponse<BrandDTO>` |
-| Categories sidebar | `GET /api/products/v1/categories` | `PaginatedResponse<CategoryDTO>` |
-| Client picker | `GET /api/clients/v1` | `PaginatedResponse<ClientDTO>` |
-| Warehouse selector | `GET /api/inventory/v1/warehouses` | `PaginatedResponse<WarehouseDTO>` |
-| Recently purchased | `GET /api/orders/v1?clientId=...&pageSize=5` | `PaginatedResponse<OrderDTO>` |
-| Barcode scan | `GET /api/search/v1/products?q=<upc>` | `PaginatedResponse<ProductDTO>` |
+| Product grid / list | [`GET /api/search/v1/products`](/api-reference/search/products) | `PaginatedResponse<ProductDTO>` |
+| Product images (bulk) | [`POST /api/products/v1/media/by-product-ids`](/api-reference/products/media-bulk) | `Record<id, ProductMediaDTO[]>` |
+| Stock per warehouse (bulk) | [`POST /api/inventory/v1/stock/bulk`](/api-reference/inventory/stock-bulk) | `BulkStockResponse` |
+| Prices per client (bulk) | [`POST /api/products/v1/price-lists/by-products`](/api-reference/products/prices-bulk) | `Record<id, UomPriceListResponse>` |
+| Brands sidebar | [`GET /api/products/v1/brands`](/api-reference/products/brands) | `PaginatedResponse<BrandDTO>` |
+| Categories sidebar | [`GET /api/products/v1/categories`](/api-reference/products/categories) | `PaginatedResponse<CategoryDTO>` |
+| Client picker | [`GET /api/clients/v1`](/api-reference/clients/list) | `PaginatedResponse<ClientDTO>` |
+| Warehouse selector | [`GET /api/inventory/v1/warehouses`](/api-reference/inventory/warehouses) | `PaginatedResponse<WarehouseDTO>` |
+| Recently purchased | [`GET /api/orders/v1?clientId=...&pageSize=5`](/api-reference/orders/list) | `PaginatedResponse<OrderDTO>` |
+| Barcode scan | [`GET /api/search/v1/products?q=<upc>`](/api-reference/search/products) | `PaginatedResponse<ProductDTO>` |
 
 ## Gaps
 
