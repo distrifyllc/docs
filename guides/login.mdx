@@ -5,12 +5,7 @@ description: 'How a staff member authenticates against Distrify, and what happen
 
 ## Overview
 
-Authentication on Distrify is a two-stage flow:
-
-1. **Firebase Auth** issues an ID token (JWT) when the user signs in.
-2. The Distrify **api-gateway** verifies that token on every request, resolves the user, picks an organization scope and injects `x-org-id` into the downstream service call. Clients never set `x-org-id` themselves — if they do, the gateway strips it.
-
-The whole client lives in [`jadix/src/modules/auth`](https://github.com/distrifyllc/jadix). The reference implementation is `AuthProvider.tsx`.
+Authentication uses Firebase Auth on the client. After sign-in, the Firebase ID token is sent as `Authorization: Bearer <idToken>` on every API call — that token is all Distrify needs to identify the user and scope their requests.
 
 ## Step 1 — Sign in with Firebase
 
@@ -22,7 +17,7 @@ The web app uses the Firebase JS SDK directly. Three methods are supported:
 | Google | `signInWithPopup(auth, new GoogleAuthProvider())` |
 | Phone + OTP | `signInWithPhoneNumber(auth, phone, recaptcha)` → `result.confirm(code)` |
 
-When any of those resolve, Firebase persists the session and `onAuthStateChanged` fires with the `User`. From that user you can call `user.getIdToken()` to retrieve the JWT that goes in `Authorization: Bearer ...` on every subsequent request.
+When any of those resolve, Firebase persists the session and `onAuthStateChanged` fires with the `User`. From that user you can call `user.getIdToken()` to retrieve the JWT.
 
 <Note>
 The token expires every hour. The Firebase SDK refreshes it automatically; if you call the API from a non-JS client, refresh the token with the [Firebase REST refresh endpoint](https://firebase.google.com/docs/reference/rest/auth#section-refresh-token).
@@ -69,7 +64,7 @@ There are three cases the frontend has to handle, all of them driven by the resp
 
 <Tabs>
   <Tab title="Single organization">
-    `needsSelection` is `false` and the array has exactly one entry. The user's default scope is unambiguous — go straight to step 4.
+    `needsSelection` is `false` and the array has exactly one entry. The user's scope is unambiguous — go straight to step 4.
   </Tab>
   <Tab title="Multiple organizations">
     `needsSelection` is `true`. The user belongs to more than one organization and has not picked a default yet. Show an organization picker UI (see `OrgPickerDialog.tsx` in jadix). When the user picks one, call:
@@ -78,10 +73,10 @@ There are three cases the frontend has to handle, all of them driven by the resp
       Body: `{ "organizationId": "..." }`. Marks that org as the default; subsequent calls are scoped to it.
     </Card>
 
-    After a `204`, proceed to step 4. The choice is persisted server-side, so the next time the user signs in, `needsSelection` will be `false`.
+    After a `204`, proceed to step 4. The choice is persisted, so the next time the user signs in, `needsSelection` will be `false`.
   </Tab>
   <Tab title="No organizations">
-    The call returns a 401 (the firebase user has no record in `users`/`staff` yet). The frontend should open the **organization setup dialog** so the user creates an organization. See `OrganizationSetupDialog.tsx`.
+    The call returns a 401 (the firebase user has no record in Distrify yet). The frontend should open the **organization setup dialog** so the user creates an organization. See `OrganizationSetupDialog.tsx`.
   </Tab>
 </Tabs>
 
@@ -130,13 +125,6 @@ onAuthStateChanged(auth, async (user) => {
 });
 ```
 
-## What the api-gateway does for you
+## Switching organizations later
 
-You never send `x-org-id`. The gateway:
-
-1. Validates the bearer token against Firebase.
-2. Looks up the user and reads their current default organization.
-3. Sets `x-org-id` on the proxied request before it reaches any downstream service.
-4. Strips any inbound `x-org-id` to prevent spoofing.
-
-That means an org switch is always a single call to `PUT /auth/default-organization` — there is no header or cookie to keep in sync on the client.
+If the user wants to change the active organization without signing out, call `PUT /api/users/v1/auth/default-organization` with the new `organizationId` and re-run step 4. There is no header or cookie to keep in sync on the client.

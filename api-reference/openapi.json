@@ -46,7 +46,7 @@
       "put": {
         "tags": ["Authentication"],
         "summary": "Set my default organization",
-        "description": "Marks one of the user's organizations as the default. The api-gateway will inject `x-org-id` based on this value on every subsequent request.",
+        "description": "Marks one of the user's organizations as the default. Subsequent requests are scoped to this organization automatically.",
         "requestBody": {
           "required": true,
           "content": {
@@ -67,7 +67,7 @@
       "get": {
         "tags": ["Organization"],
         "summary": "Get organization profile",
-        "description": "Returns the full profile of the user's current organization (resolved by the gateway from the bearer token).",
+        "description": "Returns the full profile of the user's current organization.",
         "responses": {
           "200": {
             "description": "Organization profile",
@@ -310,7 +310,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Firebase ID token issued after sign-in. Send as `Authorization: Bearer <idToken>`. The api-gateway resolves the user, validates the token and injects organization scope on every downstream call — clients never set `x-org-id` themselves."
+        "description": "Firebase ID token issued after sign-in. Send as `Authorization: Bearer <idToken>`. The token alone determines both the authenticated user and the organization the request is scoped to."
       }
     },
     "responses": {
