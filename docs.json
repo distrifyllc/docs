@@ -64,6 +64,79 @@
               "api-reference/staff/toggle-active",
               "api-reference/staff/delete"
             ]
+          },
+          {
+            "group": "Products",
+            "pages": [
+              "api-reference/products/list",
+              "api-reference/products/get",
+              "api-reference/products/media",
+              "api-reference/products/media-bulk",
+              "api-reference/products/unit-of-measures",
+              "api-reference/products/brands",
+              "api-reference/products/categories",
+              "api-reference/products/prices-bulk"
+            ]
+          },
+          {
+            "group": "Inventory",
+            "pages": [
+              "api-reference/inventory/warehouses",
+              "api-reference/inventory/stock-bulk",
+              "api-reference/inventory/stock-details",
+              "api-reference/inventory/lots"
+            ]
+          },
+          {
+            "group": "Clients",
+            "pages": [
+              "api-reference/clients/list",
+              "api-reference/clients/get",
+              "api-reference/clients/addresses"
+            ]
+          },
+          {
+            "group": "Orders",
+            "pages": [
+              "api-reference/orders/list",
+              "api-reference/orders/create",
+              "api-reference/orders/get",
+              "api-reference/orders/update",
+              "api-reference/orders/change-status",
+              "api-reference/orders/change-delivery-status",
+              "api-reference/orders/mark-invoiced",
+              "api-reference/orders/void",
+              "api-reference/orders/invoice-pdf",
+              "api-reference/orders/order-payments",
+              "api-reference/orders/create-payment",
+              "api-reference/orders/charge-types",
+              "api-reference/orders/delivery-statuses",
+              "api-reference/orders/payment-methods",
+              "api-reference/orders/payment-terms",
+              "api-reference/orders/credit-memos",
+              "api-reference/orders/credit-memo",
+              "api-reference/orders/price-history"
+            ]
+          },
+          {
+            "group": "Search",
+            "pages": [
+              "api-reference/search/products",
+              "api-reference/search/orders",
+              "api-reference/search/order-counts"
+            ]
+          },
+          {
+            "group": "Purchases",
+            "pages": [
+              "api-reference/purchases/incoming-qty"
+            ]
+          },
+          {
+            "group": "Quotes",
+            "pages": [
+              "api-reference/quotes/quoted-qty"
+            ]
           }
         ]
       }

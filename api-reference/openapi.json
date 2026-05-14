@@ -2,26 +2,25 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Distrify API",
-    "description": "REST API for the Distrify platform — login, organization, staff and related resources.",
+    "description": "REST API for the Distrify platform.",
     "version": "1.0.0"
   },
   "servers": [
-    {
-      "url": "https://api.distrify.us",
-      "description": "Production"
-    },
-    {
-      "url": "http://localhost",
-      "description": "Local (via the api-gateway nginx on docker-compose)"
-    }
+    { "url": "https://api.distrify.us", "description": "Production" },
+    { "url": "http://localhost", "description": "Local (api-gateway nginx on docker-compose)" }
   ],
-  "security": [
-    { "bearerAuth": [] }
-  ],
+  "security": [{ "bearerAuth": [] }],
   "tags": [
     { "name": "Authentication", "description": "Firebase token exchange, multi-organization selection" },
     { "name": "Organization", "description": "Organization profile" },
-    { "name": "Staff", "description": "Staff member CRUD, profile and permissions" }
+    { "name": "Staff", "description": "Staff CRUD, profile and permissions" },
+    { "name": "Products", "description": "Products, brands, categories, media, prices and UOMs" },
+    { "name": "Inventory", "description": "Warehouses, stock and lots" },
+    { "name": "Clients", "description": "Client records and addresses" },
+    { "name": "Orders", "description": "Orders, payments, credit memos and config" },
+    { "name": "Search", "description": "Full-text search for products and orders" },
+    { "name": "Purchases", "description": "Purchase orders" },
+    { "name": "Quotes", "description": "Quotations" }
   ],
   "paths": {
     "/api/users/v1/auth/organizations": {
@@ -30,14 +29,7 @@
         "summary": "List my organizations",
         "description": "Returns the organizations the authenticated user belongs to. Call this right after Firebase sign-in to decide whether to show an organization picker (`needsSelection: true`) or proceed straight into the app.",
         "responses": {
-          "200": {
-            "description": "Organizations available to the user",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/AuthOrganizationsResponse" }
-              }
-            }
-          },
+          "200": { "description": "Organizations available to the user", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthOrganizationsResponse" } } } },
           "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
@@ -47,14 +39,7 @@
         "tags": ["Authentication"],
         "summary": "Set my default organization",
         "description": "Marks one of the user's organizations as the default. Subsequent requests are scoped to this organization automatically.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/SetDefaultOrgRequest" }
-            }
-          }
-        },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SetDefaultOrgRequest" } } } },
         "responses": {
           "204": { "description": "Default organization updated" },
           "400": { "$ref": "#/components/responses/ValidationError" },
@@ -69,14 +54,7 @@
         "summary": "Get organization profile",
         "description": "Returns the full profile of the user's current organization.",
         "responses": {
-          "200": {
-            "description": "Organization profile",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Organization" }
-              }
-            }
-          },
+          "200": { "description": "Organization profile", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Organization" } } } },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
@@ -88,14 +66,7 @@
         "summary": "Get my staff profile",
         "description": "Returns the staff record corresponding to the authenticated user inside their current organization.",
         "responses": {
-          "200": {
-            "description": "Staff member",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Staff" }
-              }
-            }
-          },
+          "200": { "description": "Staff member", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Staff" } } } },
           "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       }
@@ -104,29 +75,10 @@
       "get": {
         "tags": ["Staff"],
         "summary": "Get staff permissions",
-        "description": "Returns the flattened list of permission keys granted to the staff member through their assigned roles. Permission keys look like `routes.dispatch.access`, `settings.access`, etc.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "Staff member UUID",
-            "schema": { "type": "string", "format": "uuid" }
-          }
-        ],
+        "description": "Returns the flattened list of permission keys granted to the staff member through their assigned roles.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
         "responses": {
-          "200": {
-            "description": "Permission keys",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": { "type": "string" },
-                  "example": ["settings.access", "routes.dispatch.access"]
-                }
-              }
-            }
-          },
+          "200": { "description": "Permission keys", "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" }, "example": ["settings.access", "routes.dispatch.access"] } } } },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -137,40 +89,11 @@
         "summary": "List staff",
         "description": "Returns a paginated list of staff members in the user's current organization.",
         "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "description": "1-indexed page number",
-            "schema": { "type": "integer", "minimum": 1, "default": 1 }
-          },
-          {
-            "name": "pageSize",
-            "in": "query",
-            "description": "Items per page (max 100)",
-            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
-          }
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } }
         ],
         "responses": {
-          "200": {
-            "description": "Paginated staff list",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": ["data", "total", "page", "pageSize"],
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": { "$ref": "#/components/schemas/Staff" }
-                    },
-                    "total": { "type": "integer", "example": 42 },
-                    "page": { "type": "integer", "example": 1 },
-                    "pageSize": { "type": "integer", "example": 20 }
-                  }
-                }
-              }
-            }
-          },
+          "200": { "description": "Paginated staff list", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedStaff" } } } },
           "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       },
@@ -178,83 +101,34 @@
         "tags": ["Staff"],
         "summary": "Create staff",
         "description": "Creates a new staff member in the user's current organization.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/CreateStaffRequest" }
-            }
-          }
-        },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateStaffRequest" } } } },
         "responses": {
-          "201": {
-            "description": "Staff created",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Staff" }
-              }
-            }
-          },
+          "201": { "description": "Staff created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Staff" } } } },
           "400": { "$ref": "#/components/responses/ValidationError" },
           "409": { "$ref": "#/components/responses/Conflict" }
         }
       }
     },
     "/api/organizations/v1/staff/{id}": {
-      "parameters": [
-        {
-          "name": "id",
-          "in": "path",
-          "required": true,
-          "description": "Staff member UUID",
-          "schema": { "type": "string", "format": "uuid" }
-        }
-      ],
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
       "get": {
-        "tags": ["Staff"],
-        "summary": "Get staff",
-        "description": "Returns a single staff member by ID.",
+        "tags": ["Staff"], "summary": "Get staff", "description": "Returns a single staff member by ID.",
         "responses": {
-          "200": {
-            "description": "Staff member",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Staff" }
-              }
-            }
-          },
+          "200": { "description": "Staff member", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Staff" } } } },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       },
       "put": {
-        "tags": ["Staff"],
-        "summary": "Update staff",
-        "description": "Updates an existing staff member.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/UpdateStaffRequest" }
-            }
-          }
-        },
+        "tags": ["Staff"], "summary": "Update staff", "description": "Updates an existing staff member.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateStaffRequest" } } } },
         "responses": {
-          "200": {
-            "description": "Updated staff member",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Staff" }
-              }
-            }
-          },
+          "200": { "description": "Updated staff member", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Staff" } } } },
           "400": { "$ref": "#/components/responses/ValidationError" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       },
       "delete": {
-        "tags": ["Staff"],
-        "summary": "Delete staff",
-        "description": "Soft-deletes a staff member.",
+        "tags": ["Staff"], "summary": "Delete staff", "description": "Soft-deletes a staff member.",
         "responses": {
           "204": { "description": "Staff member deleted" },
           "404": { "$ref": "#/components/responses/NotFound" }
@@ -263,43 +137,454 @@
     },
     "/api/organizations/v1/staff/{id}/toggle-active": {
       "patch": {
-        "tags": ["Staff"],
-        "summary": "Toggle staff active",
-        "description": "Enables or disables a staff member without deleting it.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "Staff member UUID",
-            "schema": { "type": "string", "format": "uuid" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["isActive"],
-                "properties": {
-                  "isActive": { "type": "boolean", "example": false }
-                }
-              }
-            }
-          }
-        },
+        "tags": ["Staff"], "summary": "Toggle staff active", "description": "Enables or disables a staff member without deleting it.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["isActive"], "properties": { "isActive": { "type": "boolean", "example": false } } } } } },
         "responses": {
-          "200": {
-            "description": "Updated staff member",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Staff" }
-              }
-            }
-          },
+          "200": { "description": "Updated staff member", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Staff" } } } },
           "400": { "$ref": "#/components/responses/ValidationError" },
           "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/api/products/v1": {
+      "get": {
+        "tags": ["Products"], "summary": "List products", "description": "Returns a paginated list of products. For full-text search by name/SKU/UPC, prefer `GET /api/search/v1/products`.",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": {
+          "200": { "description": "Paginated products", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedProducts" } } } }
+        }
+      }
+    },
+    "/api/products/v1/{id}": {
+      "get": {
+        "tags": ["Products"], "summary": "Get product",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Product", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/products/v1/{id}/media": {
+      "get": {
+        "tags": ["Products"], "summary": "List product media",
+        "description": "Returns the images and other media attached to a product, ordered by `order`.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Media list", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ProductMedia" } } } } }
+        }
+      }
+    },
+    "/api/products/v1/media/by-product-ids": {
+      "post": {
+        "tags": ["Products"], "summary": "Bulk product media by ids",
+        "description": "Returns media for many products at once, keyed by product id. Use this on the catalog grid instead of N+1 requests.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["productIds"], "properties": { "productIds": { "type": "array", "items": { "type": "string", "format": "uuid" }, "minItems": 1 } } } } } },
+        "responses": {
+          "200": { "description": "Media keyed by productId", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": { "type": "array", "items": { "$ref": "#/components/schemas/ProductMedia" } } } } } }
+        }
+      }
+    },
+    "/api/products/v1/{id}/unit-of-measures": {
+      "get": {
+        "tags": ["Products"], "summary": "List product unit-of-measures",
+        "description": "Returns every UOM configured for the product (e.g. case of 12, six-pack of 6, single unit) with the conversion factor and `isDefault` flag.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "UOM list", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ProductUnitOfMeasure" } } } } }
+        }
+      }
+    },
+    "/api/products/v1/brands": {
+      "get": {
+        "tags": ["Products"], "summary": "List brands",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": {
+          "200": { "description": "Paginated brands", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedBrands" } } } }
+        }
+      }
+    },
+    "/api/products/v1/categories": {
+      "get": {
+        "tags": ["Products"], "summary": "List categories",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": {
+          "200": { "description": "Paginated categories", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedCategories" } } } }
+        }
+      }
+    },
+    "/api/products/v1/price-lists/by-products": {
+      "post": {
+        "tags": ["Products"], "summary": "Bulk product prices by client",
+        "description": "Returns per-product UOM price lists for the given products, honouring the price list assigned to `clientId`. Use this on the catalog and the cart whenever the active client changes.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["productIds"], "properties": { "productIds": { "type": "array", "items": { "type": "string", "format": "uuid" } }, "clientId": { "type": "string", "format": "uuid" } } } } } },
+        "responses": {
+          "200": { "description": "Prices keyed by productId", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/UomPriceList" } } } } }
+        }
+      }
+    },
+
+    "/api/inventory/v1/warehouses": {
+      "get": {
+        "tags": ["Inventory"], "summary": "List warehouses",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": {
+          "200": { "description": "Paginated warehouses", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedWarehouses" } } } }
+        }
+      }
+    },
+    "/api/inventory/v1/stock/bulk": {
+      "post": {
+        "tags": ["Inventory"], "summary": "Bulk stock by product ids",
+        "description": "Returns available stock for many products at once, optionally scoped to a warehouse. Use this on the catalog grid.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["productIds"], "properties": { "productIds": { "type": "array", "items": { "type": "string", "format": "uuid" }, "minItems": 1 }, "warehouseId": { "type": "string", "format": "uuid" } } } } } },
+        "responses": {
+          "200": { "description": "Stock summary keyed by productId", "content": { "application/json": { "schema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "object", "additionalProperties": { "$ref": "#/components/schemas/StockSummary" } } } } } } }
+        }
+      }
+    },
+    "/api/inventory/v1/stock/{productId}/details": {
+      "get": {
+        "tags": ["Inventory"], "summary": "Stock details for a product",
+        "description": "Returns the per-warehouse stock breakdown, plus lots, serials and the recent inventory transactions for a single product.",
+        "parameters": [
+          { "name": "productId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "warehouseId", "in": "query", "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Stock details", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StockDetails" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/inventory/v1/lots": {
+      "get": {
+        "tags": ["Inventory"], "summary": "List lots",
+        "description": "Returns the lots tracked for a product. The mobile app uses this to surface the nearest-expiring lot on the Product Detail screen.",
+        "parameters": [
+          { "name": "productId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "warehouseId", "in": "query", "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Lots", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Lot" } } } } }
+        }
+      }
+    },
+
+    "/api/clients/v1": {
+      "get": {
+        "tags": ["Clients"], "summary": "List clients",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "search", "in": "query", "description": "Free-text on name, RFC and email", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Paginated clients", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedClients" } } } }
+        }
+      }
+    },
+    "/api/clients/v1/{id}": {
+      "get": {
+        "tags": ["Clients"], "summary": "Get client",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Client", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Client" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/clients/v1/{clientId}/addresses": {
+      "get": {
+        "tags": ["Clients"], "summary": "List client addresses",
+        "parameters": [{ "name": "clientId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Addresses", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ClientAddress" } } } } }
+        }
+      }
+    },
+
+    "/api/orders/v1": {
+      "get": {
+        "tags": ["Orders"], "summary": "List orders",
+        "description": "Returns a paginated list of orders. For full-text search across client, folio and invoice number, prefer `GET /api/search/v1/orders`.",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "search", "in": "query", "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "deliveryDateFrom", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "deliveryDateTo", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "paymentTermId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "deliveryStatusIds", "in": "query", "description": "Comma-separated list of delivery status UUIDs", "schema": { "type": "string" } },
+          { "name": "sellerId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["DRAFT", "CONFIRMED", "CANCELLED", "VOIDED"] } },
+          { "name": "clientId", "in": "query", "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Paginated orders", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedOrders" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Orders"], "summary": "Create order",
+        "description": "Creates an order. Set `status: \"DRAFT\"` to save the cart without confirming, or `\"CONFIRMED\"` to commit and (optionally) trigger invoice generation with `markAsInvoiced: true`.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOrderRequest" } } } },
+        "responses": {
+          "201": { "description": "Order created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/api/orders/v1/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "get": {
+        "tags": ["Orders"], "summary": "Get order",
+        "responses": {
+          "200": { "description": "Order", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["Orders"], "summary": "Update order",
+        "description": "Full replacement of a DRAFT order. For confirmed orders use PATCH semantics on `/status`, `/delivery-status` etc.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateOrderRequest" } } } },
+        "responses": {
+          "200": { "description": "Updated order", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/orders/v1/{id}/status": {
+      "patch": {
+        "tags": ["Orders"], "summary": "Change order status",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChangeOrderStatusRequest" } } } },
+        "responses": { "200": { "description": "Updated order", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } } } }
+      }
+    },
+    "/api/orders/v1/{id}/delivery-status": {
+      "patch": {
+        "tags": ["Orders"], "summary": "Change delivery status",
+        "description": "Advances the order through its delivery timeline (e.g. PENDING → IN_PROGRESS → DELIVERED).",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChangeDeliveryStatusRequest" } } } },
+        "responses": { "200": { "description": "Updated order", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } } } }
+      }
+    },
+    "/api/orders/v1/{id}/invoice": {
+      "patch": {
+        "tags": ["Orders"], "summary": "Mark order as invoiced",
+        "description": "Triggers CFDI generation and stamps the order with an `invoiceNumber`. Idempotent.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "200": { "description": "Invoiced order", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } } } }
+      }
+    },
+    "/api/orders/v1/{id}/void": {
+      "patch": {
+        "tags": ["Orders"], "summary": "Void order",
+        "description": "Voids an invoiced order. Returns the updated order with `status: \"VOIDED\"`.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "200": { "description": "Voided order", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } } } }
+      }
+    },
+    "/api/orders/v1/{id}/invoice/pdf": {
+      "get": {
+        "tags": ["Orders"], "summary": "Download invoice PDF",
+        "description": "Returns the CFDI 4.0 invoice PDF. Only valid for orders that have been invoiced.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Invoice PDF", "content": { "application/pdf": { "schema": { "type": "string", "format": "binary" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/orders/v1/{id}/payments": {
+      "get": {
+        "tags": ["Orders"], "summary": "List payments for an order",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "200": { "description": "Payments", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Payment" } } } } } }
+      }
+    },
+    "/api/orders/v1/payments": {
+      "post": {
+        "tags": ["Orders"], "summary": "Create payment",
+        "description": "Records a payment for a client. Use `allocations` to split it across one or more orders.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePaymentRequest" } } } },
+        "responses": {
+          "201": { "description": "Payment created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Payment" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/api/orders/v1/charge-types": {
+      "get": {
+        "tags": ["Orders"], "summary": "List charge types",
+        "description": "Returns the per-organization charge configuration (shipping, IVA, card commissions, etc.) shown in the Cart's CARGOS section.",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": { "200": { "description": "Paginated charge types", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedChargeTypes" } } } } }
+      }
+    },
+    "/api/orders/v1/delivery-statuses": {
+      "get": {
+        "tags": ["Orders"], "summary": "List delivery statuses",
+        "description": "Returns the ordered list of delivery statuses configured for the organization (e.g. Confirmada, Preparada, En tránsito, Entregada). Drives the timeline scaffold on the order detail screen.",
+        "responses": { "200": { "description": "Delivery statuses", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/DeliveryStatus" } } } } } }
+      }
+    },
+    "/api/orders/v1/payment-methods": {
+      "get": {
+        "tags": ["Orders"], "summary": "List payment methods",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": { "200": { "description": "Paginated payment methods", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedPaymentMethods" } } } } }
+      }
+    },
+    "/api/orders/v1/payment-terms": {
+      "get": {
+        "tags": ["Orders"], "summary": "List payment terms",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": { "200": { "description": "Paginated payment terms", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedPaymentTerms" } } } } }
+      }
+    },
+    "/api/orders/v1/credit-memos": {
+      "get": {
+        "tags": ["Orders"], "summary": "List credit memos",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "clientId", "in": "query", "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": { "200": { "description": "Paginated credit memos", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedCreditMemos" } } } } }
+      }
+    },
+    "/api/orders/v1/credit-memos/{id}": {
+      "get": {
+        "tags": ["Orders"], "summary": "Get credit memo",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Credit memo", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreditMemo" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/orders/v1/clients/{clientId}/products/{productId}/price-history": {
+      "get": {
+        "tags": ["Orders"], "summary": "Price history for client + product",
+        "description": "Returns the recent sale prices of a product to a specific client. Drives the \"Última venta\" hint in the cart.",
+        "parameters": [
+          { "name": "clientId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "productId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": { "description": "Price history entries (newest first)", "content": { "application/json": { "schema": { "type": "array", "items": { "type": "object", "required": ["unitPrice", "quantity", "orderNumber", "createdAt"], "properties": { "unitPrice": { "type": "number" }, "quantity": { "type": "number" }, "orderNumber": { "type": "integer" }, "createdAt": { "type": "string", "format": "date-time" } } } } } } }
+        }
+      }
+    },
+
+    "/api/search/v1/products": {
+      "get": {
+        "tags": ["Search"], "summary": "Search products",
+        "description": "Full-text search across product name, SKU and UPC, with category, brand and stock filters. Backs the catalog grid on the mobile app.",
+        "parameters": [
+          { "name": "q", "in": "query", "description": "Free-text search across name, SKU and UPC", "schema": { "type": "string" } },
+          { "name": "categoryId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "categoryIds[]", "in": "query", "description": "Multiple category UUIDs", "schema": { "type": "array", "items": { "type": "string", "format": "uuid" } } },
+          { "name": "brandId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "brandIds[]", "in": "query", "description": "Multiple brand UUIDs", "schema": { "type": "array", "items": { "type": "string", "format": "uuid" } } },
+          { "name": "hasStock", "in": "query", "description": "\"true\" or \"false\" — filter by in-stock availability", "schema": { "type": "string", "enum": ["true", "false"] } },
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": { "200": { "description": "Paginated products", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedProducts" } } } } }
+      }
+    },
+    "/api/search/v1/orders": {
+      "get": {
+        "tags": ["Search"], "summary": "Search orders",
+        "description": "Full-text search across client name, order folio and invoice number, with the same filter surface as `GET /api/orders/v1`.",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "paymentStatus", "in": "query", "description": "Single value or repeated", "schema": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] } },
+          { "name": "sellerId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "clientId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "dateFrom", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "deliveryDateFrom", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "deliveryDateTo", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "paymentTermId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "deliveryStatusId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "hasInvoice", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "excludeStatus", "in": "query", "schema": { "type": "array", "items": { "type": "string" } } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": { "200": { "description": "Paginated orders", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedOrders" } } } } }
+      }
+    },
+    "/api/search/v1/orders/counts": {
+      "get": {
+        "tags": ["Search"], "summary": "Order counts (badges)",
+        "description": "Aggregates the same filter set as `GET /api/search/v1/orders` into counts by delivery status and payment status. Drives the badges on the Orders list tabs.",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "sellerId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "clientId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "dateFrom", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "paymentStatus", "in": "query", "schema": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] } },
+          { "name": "hasInvoice", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "thisWeekFrom", "in": "query", "description": "ISO date for the start of the \"this week\" window", "schema": { "type": "string", "format": "date" } },
+          { "name": "pendingDeliveryStatusId", "in": "query", "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": { "200": { "description": "Order counts", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderCountsResponse" } } } } }
+      }
+    },
+
+    "/api/purchases/v1/incoming-qty": {
+      "post": {
+        "tags": ["Purchases"], "summary": "Incoming qty per product",
+        "description": "Returns the total qty incoming for the given products from open purchase orders. Does not break down by PO; see the gap noted in the Product Detail guide.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["productIds"], "properties": { "productIds": { "type": "array", "items": { "type": "string", "format": "uuid" } } } } } } },
+        "responses": {
+          "200": { "description": "Incoming qty keyed by productId", "content": { "application/json": { "schema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "object", "additionalProperties": { "type": "number" } } } } } } }
+        }
+      }
+    },
+
+    "/api/quotes/v1/quoted-qty": {
+      "post": {
+        "tags": ["Quotes"], "summary": "Quoted qty per product",
+        "description": "Returns the total qty currently committed to open quotations for the given products.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["productIds"], "properties": { "productIds": { "type": "array", "items": { "type": "string", "format": "uuid" } } } } } } },
+        "responses": {
+          "200": { "description": "Quoted qty keyed by productId", "content": { "application/json": { "schema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "object", "additionalProperties": { "type": "number" } } } } } } }
         }
       }
     }
@@ -307,176 +592,390 @@
   "components": {
     "securitySchemes": {
       "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT",
+        "type": "http", "scheme": "bearer", "bearerFormat": "JWT",
         "description": "Firebase ID token issued after sign-in. Send as `Authorization: Bearer <idToken>`. The token alone determines both the authenticated user and the organization the request is scoped to."
       }
     },
     "responses": {
-      "Unauthorized": {
-        "description": "Missing or invalid credentials",
-        "content": {
-          "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" }
-          }
-        }
-      },
-      "NotFound": {
-        "description": "Resource not found",
-        "content": {
-          "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" }
-          }
-        }
-      },
-      "Conflict": {
-        "description": "Conflict — resource already exists",
-        "content": {
-          "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" }
-          }
-        }
-      },
-      "ValidationError": {
-        "description": "Validation failed. Message is localized via `Accept-Language`.",
-        "content": {
-          "application/json": {
-            "schema": { "$ref": "#/components/schemas/Error" }
-          }
-        }
-      }
+      "Unauthorized": { "description": "Missing or invalid credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "Resource not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Conflict": { "description": "Conflict — resource already exists", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "ValidationError": { "description": "Validation failed. Message is localized via `Accept-Language`.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
     },
     "schemas": {
-      "Error": {
-        "type": "object",
-        "required": ["message", "statusCode"],
-        "properties": {
-          "message": { "type": "string", "example": "Resource not found" },
-          "statusCode": { "type": "integer", "example": 404 }
-        }
-      },
-      "OrgSummary": {
-        "type": "object",
-        "required": ["organizationId", "organizationName", "role", "isDefault", "userId"],
-        "properties": {
-          "organizationId": { "type": "string", "format": "uuid" },
-          "organizationName": { "type": "string", "example": "Acme Distributors" },
-          "role": { "type": "string", "enum": ["STAFF", "CLIENT", "ANONYMOUS"], "example": "STAFF" },
-          "isDefault": { "type": "boolean", "description": "Whether this organization is currently the user's default scope" },
-          "userId": { "type": "string", "format": "uuid", "description": "The user record inside this organization" }
-        }
-      },
-      "AuthOrganizationsResponse": {
-        "type": "object",
-        "required": ["authId", "organizations", "needsSelection"],
-        "properties": {
-          "authId": { "type": "string", "description": "Firebase UID for the authenticated user" },
-          "organizations": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/OrgSummary" }
-          },
-          "needsSelection": {
-            "type": "boolean",
-            "description": "`true` when the user has more than one organization and no default chosen yet — the UI must prompt the user to pick one."
-          }
-        }
-      },
-      "SetDefaultOrgRequest": {
-        "type": "object",
-        "required": ["organizationId"],
-        "properties": {
-          "organizationId": { "type": "string", "format": "uuid", "description": "Must be one of the organizations returned by `GET /auth/organizations`" }
-        }
-      },
+      "Error": { "type": "object", "required": ["message", "statusCode"], "properties": { "message": { "type": "string", "example": "Resource not found" }, "statusCode": { "type": "integer", "example": 404 } } },
+      "Pagination": { "type": "object", "required": ["total", "page", "pageSize"], "properties": { "total": { "type": "integer", "example": 42 }, "page": { "type": "integer", "example": 1 }, "pageSize": { "type": "integer", "example": 20 } } },
+
+      "OrgSummary": { "type": "object", "required": ["organizationId", "organizationName", "role", "isDefault", "userId"], "properties": { "organizationId": { "type": "string", "format": "uuid" }, "organizationName": { "type": "string" }, "role": { "type": "string", "enum": ["STAFF", "CLIENT", "ANONYMOUS"] }, "isDefault": { "type": "boolean" }, "userId": { "type": "string", "format": "uuid" } } },
+      "AuthOrganizationsResponse": { "type": "object", "required": ["authId", "organizations", "needsSelection"], "properties": { "authId": { "type": "string" }, "organizations": { "type": "array", "items": { "$ref": "#/components/schemas/OrgSummary" } }, "needsSelection": { "type": "boolean" } } },
+      "SetDefaultOrgRequest": { "type": "object", "required": ["organizationId"], "properties": { "organizationId": { "type": "string", "format": "uuid" } } },
+
       "Organization": {
         "type": "object",
         "required": ["id", "name", "invoicePrefix", "primaryProductIdentifier", "defaultEntityType", "defaultGenerateInvoice", "createdAt", "updatedAt"],
         "properties": {
-          "id": { "type": "string", "format": "uuid", "example": "0190a4f7-7d39-7c2c-9b1a-9c8a2e7d3f01" },
-          "name": { "type": "string", "example": "Acme Distributors" },
-          "dba": { "type": "string", "example": "Acme" },
-          "phone": { "type": "string", "example": "+1 555 123 4567" },
-          "email": { "type": "string", "format": "email", "example": "ops@acme.com" },
-          "invoicePrefix": { "type": "string", "maxLength": 10, "example": "ACM" },
-          "primaryProductIdentifier": { "type": "string", "enum": ["SKU", "UPC"], "example": "SKU" },
-          "defaultEntityType": { "type": "string", "enum": ["COMPANY", "PERSON"], "example": "COMPANY" },
-          "defaultGenerateInvoice": { "type": "boolean", "example": true },
-          "defaultPaymentTermId": { "type": "string", "format": "uuid", "nullable": true },
-          "logoUrl": { "type": "string", "format": "uri" },
-          "logoUrlMedium": { "type": "string", "format": "uri" },
-          "logoUrlThumb": { "type": "string", "format": "uri" },
-          "street": { "type": "string", "nullable": true, "example": "123 Main St" },
-          "street2": { "type": "string", "nullable": true },
-          "city": { "type": "string", "nullable": true, "example": "Miami" },
-          "state": { "type": "string", "nullable": true, "example": "FL" },
-          "postalCode": { "type": "string", "nullable": true, "example": "33101" },
-          "country": { "type": "string", "nullable": true, "example": "US" },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" },
-          "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
+          "id": { "type": "string", "format": "uuid" }, "name": { "type": "string" }, "dba": { "type": "string" }, "phone": { "type": "string" }, "email": { "type": "string", "format": "email" },
+          "invoicePrefix": { "type": "string", "maxLength": 10 }, "primaryProductIdentifier": { "type": "string", "enum": ["SKU", "UPC"] }, "defaultEntityType": { "type": "string", "enum": ["COMPANY", "PERSON"] },
+          "defaultGenerateInvoice": { "type": "boolean" }, "defaultPaymentTermId": { "type": "string", "format": "uuid", "nullable": true },
+          "logoUrl": { "type": "string", "format": "uri" }, "logoUrlMedium": { "type": "string", "format": "uri" }, "logoUrlThumb": { "type": "string", "format": "uri" },
+          "street": { "type": "string", "nullable": true }, "street2": { "type": "string", "nullable": true }, "city": { "type": "string", "nullable": true }, "state": { "type": "string", "nullable": true }, "postalCode": { "type": "string", "nullable": true }, "country": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }, "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
         }
       },
-      "RoleSummary": {
-        "type": "object",
-        "required": ["id", "name"],
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string", "example": "Sales Rep" }
-        }
-      },
+
+      "RoleSummary": { "type": "object", "required": ["id", "name"], "properties": { "id": { "type": "string", "format": "uuid" }, "name": { "type": "string" } } },
       "Staff": {
         "type": "object",
         "required": ["id", "organizationId", "name", "lastname", "isActive", "isInternal", "warehouses", "roles", "createdAt", "updatedAt"],
         "properties": {
-          "id": { "type": "string", "format": "uuid", "example": "0190b9d0-7e0e-7a3a-9b40-1234567890ab" },
-          "organizationId": { "type": "string", "format": "uuid" },
-          "name": { "type": "string", "example": "Ana" },
-          "lastname": { "type": "string", "example": "García" },
-          "phone": { "type": "string", "example": "+57 300 1234567" },
-          "email": { "type": "string", "format": "email", "example": "ana@acme.com" },
-          "warehouses": {
-            "type": "array",
-            "items": { "type": "string", "format": "uuid" },
-            "description": "Warehouse UUIDs the staff member can operate on"
-          },
-          "isActive": { "type": "boolean", "example": true },
-          "isInternal": { "type": "boolean", "example": false },
-          "roles": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/RoleSummary" }
-          },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" },
-          "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
+          "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" }, "name": { "type": "string" }, "lastname": { "type": "string" },
+          "phone": { "type": "string" }, "email": { "type": "string", "format": "email" },
+          "warehouses": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+          "isActive": { "type": "boolean" }, "isInternal": { "type": "boolean" },
+          "roles": { "type": "array", "items": { "$ref": "#/components/schemas/RoleSummary" } },
+          "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }, "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
         }
       },
-      "CreateStaffRequest": {
+      "PaginatedStaff": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Staff" } } } }] },
+      "CreateStaffRequest": { "type": "object", "required": ["name", "lastname"], "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 255 }, "lastname": { "type": "string", "minLength": 1, "maxLength": 255 }, "phone": { "type": "string", "maxLength": 50 }, "email": { "type": "string", "format": "email", "maxLength": 255 }, "warehouses": { "type": "array", "items": { "type": "string", "format": "uuid" } } } },
+      "UpdateStaffRequest": { "type": "object", "required": ["name", "lastname"], "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 255 }, "lastname": { "type": "string", "minLength": 1, "maxLength": 255 }, "phone": { "type": "string", "maxLength": 50 }, "email": { "type": "string", "format": "email", "maxLength": 255 }, "warehouses": { "type": "array", "items": { "type": "string", "format": "uuid" } } } },
+
+      "Brand": { "type": "object", "required": ["id", "organizationId", "name"], "properties": { "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" }, "name": { "type": "string", "example": "Acme" }, "logo": { "type": "string", "format": "uri" } } },
+      "PaginatedBrands": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Brand" } } } }] },
+      "Category": { "type": "object", "required": ["id", "organizationId", "name"], "properties": { "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" }, "name": { "type": "string", "example": "Alimentos" } } },
+      "PaginatedCategories": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Category" } } } }] },
+      "UnitOfMeasure": { "type": "object", "required": ["id", "organizationId", "name", "abbreviation"], "properties": { "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" }, "name": { "type": "string", "example": "Caja" }, "abbreviation": { "type": "string", "example": "cj" } } },
+      "ProductUnitOfMeasure": {
         "type": "object",
-        "required": ["name", "lastname"],
+        "required": ["id", "productId", "unitOfMeasureId", "uomName", "uomAbbreviation", "pieces", "pcsXPackaging", "isDefault"],
         "properties": {
-          "name": { "type": "string", "minLength": 1, "maxLength": 255, "example": "Ana" },
-          "lastname": { "type": "string", "minLength": 1, "maxLength": 255, "example": "García" },
-          "phone": { "type": "string", "maxLength": 50, "example": "+57 300 1234567" },
-          "email": { "type": "string", "format": "email", "maxLength": 255, "example": "ana@acme.com" },
-          "warehouses": {
-            "type": "array",
-            "items": { "type": "string", "format": "uuid" }
-          }
+          "id": { "type": "string", "format": "uuid" }, "productId": { "type": "string", "format": "uuid" }, "unitOfMeasureId": { "type": "string", "format": "uuid" },
+          "uomName": { "type": "string" }, "uomAbbreviation": { "type": "string" },
+          "pieces": { "type": "integer", "description": "Pieces per UOM (e.g. 12 for a case of 12)" }, "pcsXPackaging": { "type": "integer" }, "isDefault": { "type": "boolean" }
         }
       },
-      "UpdateStaffRequest": {
+      "ProductMedia": {
         "type": "object",
-        "required": ["name", "lastname"],
+        "required": ["id", "productId", "organizationId", "fileType", "url", "order", "createdAt", "updatedAt"],
         "properties": {
-          "name": { "type": "string", "minLength": 1, "maxLength": 255, "example": "Ana María" },
-          "lastname": { "type": "string", "minLength": 1, "maxLength": 255, "example": "García" },
-          "phone": { "type": "string", "maxLength": 50 },
-          "email": { "type": "string", "format": "email", "maxLength": 255 },
-          "warehouses": {
-            "type": "array",
-            "items": { "type": "string", "format": "uuid" }
-          }
+          "id": { "type": "string", "format": "uuid" }, "productId": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" },
+          "fileType": { "type": "string", "example": "image/jpeg" }, "url": { "type": "string", "format": "uri" }, "description": { "type": "string" }, "order": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Product": {
+        "type": "object",
+        "required": ["id", "organizationId", "name", "type", "sku", "cost", "price", "brandId", "isActive", "availableForCreditMemo", "isCatalog", "allowSaleOutOfStock", "categoryIds", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "example": "Smart Pack 40" }, "type": { "type": "string", "enum": ["PRODUCT", "KIT", "GIF"] }, "description": { "type": "string" },
+          "sku": { "type": "string" }, "cost": { "type": "number" }, "upcs": { "type": "array", "items": { "type": "string" } },
+          "price": { "type": "number" }, "brandId": { "type": "string", "format": "uuid" }, "unitOfMeasureId": { "type": "string", "format": "uuid" },
+          "isActive": { "type": "boolean" }, "pcsXPackaging": { "type": "integer" }, "catalogPriority": { "type": "integer" },
+          "availableForCreditMemo": { "type": "boolean" }, "isCatalog": { "type": "boolean" }, "safetyStock": { "type": "integer" }, "allowSaleOutOfStock": { "type": "boolean" },
+          "expiryDate": { "type": "string", "format": "date-time" },
+          "categoryIds": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+          "unitOfMeasures": { "type": "array", "items": { "$ref": "#/components/schemas/ProductUnitOfMeasure" } },
+          "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }, "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "PaginatedProducts": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } } } }] },
+
+      "UomPriceSummary": {
+        "type": "object",
+        "required": ["productUnitOfMeasureId", "uomName", "uomAbbreviation", "pieces", "calculatedPrice", "effectivePrice", "isDefault"],
+        "properties": {
+          "productUnitOfMeasureId": { "type": "string", "format": "uuid" }, "uomName": { "type": "string" }, "uomAbbreviation": { "type": "string" },
+          "pieces": { "type": "integer" }, "calculatedPrice": { "type": "number" }, "overridePrice": { "type": "number" },
+          "effectivePrice": { "type": "number", "description": "Final price used at checkout: overridePrice if set, otherwise calculatedPrice." },
+          "overrideId": { "type": "string", "format": "uuid" }, "isDefault": { "type": "boolean" }
+        }
+      },
+      "UomPriceList": {
+        "type": "object",
+        "required": ["productId", "priceListId", "priceListName", "basePrice", "pcsXPackaging", "uoms"],
+        "properties": {
+          "productId": { "type": "string", "format": "uuid" }, "priceListId": { "type": "string", "format": "uuid" }, "priceListName": { "type": "string" },
+          "basePrice": { "type": "number" }, "pcsXPackaging": { "type": "integer" },
+          "uoms": { "type": "array", "items": { "$ref": "#/components/schemas/UomPriceSummary" } }
+        }
+      },
+
+      "Warehouse": {
+        "type": "object",
+        "required": ["id", "organizationId", "code", "name", "isActive", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" },
+          "code": { "type": "string", "example": "MX-CDMX-01" }, "name": { "type": "string", "example": "Sucursal Centro" },
+          "street": { "type": "string" }, "city": { "type": "string" }, "state": { "type": "string" }, "postalCode": { "type": "string" }, "country": { "type": "string" },
+          "latitude": { "type": "number" }, "longitude": { "type": "number" }, "formattedAddress": { "type": "string" },
+          "isActive": { "type": "boolean" }, "overstockAmount": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PaginatedWarehouses": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Warehouse" } } } }] },
+      "StockSummary": {
+        "type": "object",
+        "required": ["productId", "available"],
+        "properties": {
+          "productId": { "type": "string", "format": "uuid" },
+          "available": { "type": "number", "description": "Available qty after subtracting reservations." },
+          "onHand": { "type": "number" }, "reserved": { "type": "number" }
+        }
+      },
+      "InventoryItem": { "type": "object", "properties": { "warehouseId": { "type": "string", "format": "uuid" }, "warehouseName": { "type": "string" }, "onHand": { "type": "number" }, "reserved": { "type": "number" }, "available": { "type": "number" } } },
+      "StockDetails": {
+        "type": "object",
+        "required": ["productId", "stock"],
+        "properties": {
+          "productId": { "type": "string", "format": "uuid" },
+          "stock": { "type": "array", "items": { "$ref": "#/components/schemas/InventoryItem" } },
+          "lots": { "type": "array", "items": { "$ref": "#/components/schemas/Lot" } }
+        }
+      },
+      "Lot": {
+        "type": "object",
+        "required": ["id", "organizationId", "productId", "lotCode", "quantity", "createdAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" }, "productId": { "type": "string", "format": "uuid" },
+          "lotCode": { "type": "string", "example": "LOT-2026-04-12-A" },
+          "expiryDate": { "type": "string", "format": "date-time" }, "manufacturedDate": { "type": "string", "format": "date-time" },
+          "notes": { "type": "string" }, "purchaseId": { "type": "string", "format": "uuid" }, "purchaseNumber": { "type": "integer" },
+          "vendorName": { "type": "string" }, "quantity": { "type": "number" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+
+      "Client": {
+        "type": "object",
+        "required": ["id", "organizationId", "type", "classification", "name", "isTaxExempt", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" },
+          "type": { "type": "string", "enum": ["PERSON", "COMPANY"] }, "classification": { "type": "string", "enum": ["LEAD", "CLIENT"] },
+          "clientTypeId": { "type": "string", "format": "uuid" }, "name": { "type": "string", "example": "Abarrotes Castro" },
+          "email": { "type": "string", "format": "email" }, "phone": { "type": "string" },
+          "isTaxExempt": { "type": "boolean" }, "preferredPaymentTermId": { "type": "string", "format": "uuid" },
+          "website": { "type": "string" }, "maxOpenInvoiceAmount": { "type": "number" }, "maxOpenInvoicesCount": { "type": "integer" },
+          "staffIds": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+          "priceListIds": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+          "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }, "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "PaginatedClients": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Client" } } } }] },
+      "ClientAddress": {
+        "type": "object",
+        "required": ["id", "clientId", "street", "city", "country", "source", "isDefaultShipping", "isDefaultBilling", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "clientId": { "type": "string", "format": "uuid" },
+          "label": { "type": "string", "example": "Sucursal Centro" }, "street": { "type": "string" }, "street2": { "type": "string" },
+          "city": { "type": "string" }, "state": { "type": "string" }, "postalCode": { "type": "string" }, "country": { "type": "string" }, "countryCode": { "type": "string" },
+          "latitude": { "type": "number" }, "longitude": { "type": "number" }, "formattedAddress": { "type": "string" }, "placeId": { "type": "string" },
+          "source": { "type": "string", "enum": ["GOOGLE", "MANUAL"] }, "isDefaultShipping": { "type": "boolean" }, "isDefaultBilling": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+
+      "OrderLine": {
+        "type": "object",
+        "required": ["id", "orderId", "productId", "quantity", "unitPrice", "discountType", "discountValue", "discountAmount", "lineTotal", "sortOrder"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "orderId": { "type": "string", "format": "uuid" },
+          "productId": { "type": "string", "format": "uuid" }, "warehouseId": { "type": "string", "format": "uuid" },
+          "unitOfMeasureId": { "type": "string", "format": "uuid" }, "unitCost": { "type": "number" },
+          "quantity": { "type": "number" }, "unitPrice": { "type": "number" },
+          "discountType": { "type": "string", "enum": ["NONE", "PERCENTAGE", "FIXED"] }, "discountValue": { "type": "number" }, "discountAmount": { "type": "number" },
+          "lineTotal": { "type": "number" }, "sortOrder": { "type": "integer" }
+        }
+      },
+      "OrderCharge": {
+        "type": "object",
+        "required": ["id", "orderId", "name", "type", "value", "amount", "sortOrder"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "orderId": { "type": "string", "format": "uuid" }, "chargeTypeId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "example": "Envío" }, "type": { "type": "string", "enum": ["FIXED", "PERCENTAGE"] },
+          "value": { "type": "number" }, "amount": { "type": "number" }, "sortOrder": { "type": "integer" }
+        }
+      },
+      "DeliveryStatus": {
+        "type": "object",
+        "required": ["id", "organizationId", "name", "tag", "sortOrder", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "example": "En tránsito" }, "tag": { "type": "string", "enum": ["PENDING", "IN_PROGRESS", "DELIVERED"] }, "sortOrder": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ChargeType": {
+        "type": "object",
+        "required": ["id", "organizationId", "name", "type", "value", "isActive"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "example": "Envío" }, "type": { "type": "string", "enum": ["FIXED", "PERCENTAGE"] },
+          "value": { "type": "number" }, "isActive": { "type": "boolean" },
+          "defaultActive": { "type": "boolean", "description": "Whether the charge is pre-checked in the cart by default." }
+        }
+      },
+      "PaginatedChargeTypes": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/ChargeType" } } } }] },
+      "PaymentMethod": {
+        "type": "object", "required": ["id", "organizationId", "name", "isActive", "createdAt", "updatedAt"],
+        "properties": { "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" }, "name": { "type": "string", "example": "Tarjeta crédito" }, "description": { "type": "string" }, "isActive": { "type": "boolean" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } }
+      },
+      "PaginatedPaymentMethods": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PaymentMethod" } } } }] },
+      "PaymentTerm": {
+        "type": "object", "required": ["id", "organizationId", "name", "days", "isDefault", "isActive", "createdAt", "updatedAt"],
+        "properties": { "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" }, "name": { "type": "string", "example": "Crédito 30 días" }, "days": { "type": "integer" }, "isDefault": { "type": "boolean" }, "isActive": { "type": "boolean" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } }
+      },
+      "PaginatedPaymentTerms": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PaymentTerm" } } } }] },
+      "Order": {
+        "type": "object",
+        "required": ["id", "organizationId", "orderNumber", "clientId", "status", "subtotal", "total", "amountPaid", "balanceDue", "paymentStatus", "lines", "charges", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" },
+          "orderNumber": { "type": "string", "example": "DF-23981" }, "clientId": { "type": "string", "format": "uuid" }, "clientName": { "type": "string" },
+          "shippingAddressId": { "type": "string", "format": "uuid" }, "billingAddressId": { "type": "string", "format": "uuid" },
+          "deliveryProviderId": { "type": "string", "format": "uuid" }, "deliveryStatusId": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["DRAFT", "CONFIRMED", "CANCELLED", "VOIDED"] },
+          "taxRate": { "type": "number" }, "applyTaxBeforeDiscount": { "type": "boolean" },
+          "subtotal": { "type": "number" }, "discountType": { "type": "string", "enum": ["NONE", "PERCENTAGE", "FIXED"] }, "discountValue": { "type": "number" }, "discountAmount": { "type": "number" },
+          "taxAmount": { "type": "number" }, "total": { "type": "number" },
+          "amountPaid": { "type": "number" }, "balanceDue": { "type": "number" }, "paymentStatus": { "type": "string", "enum": ["PENDING", "PARTIAL", "PAID"] },
+          "paymentDate": { "type": "string", "format": "date-time" }, "isTaxExempt": { "type": "boolean" },
+          "invoiceNumber": { "type": "integer" }, "invoicePrefix": { "type": "string" }, "invoicedAt": { "type": "string", "format": "date-time" },
+          "sellerId": { "type": "string", "format": "uuid" }, "sellerName": { "type": "string" }, "sellerPhone": { "type": "string" },
+          "shippingAddressFormatted": { "type": "string" }, "billingAddressFormatted": { "type": "string" },
+          "notes": { "type": "string" }, "internalNotes": { "type": "string" },
+          "lines": { "type": "array", "items": { "$ref": "#/components/schemas/OrderLine" } },
+          "charges": { "type": "array", "items": { "$ref": "#/components/schemas/OrderCharge" } },
+          "deliveryStatus": { "$ref": "#/components/schemas/DeliveryStatus" },
+          "paymentTermId": { "type": "string", "format": "uuid" }, "paymentTerm": { "$ref": "#/components/schemas/PaymentTerm" },
+          "dueDate": { "type": "string", "format": "date-time" }, "deliveryDate": { "type": "string", "format": "date-time" },
+          "isOverdue": { "type": "boolean" }, "receivedAt": { "type": "string", "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }, "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "PaginatedOrders": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } } } }] },
+
+      "OrderLineInput": {
+        "type": "object",
+        "required": ["productId", "quantity", "unitPrice"],
+        "properties": {
+          "productId": { "type": "string", "format": "uuid" }, "warehouseId": { "type": "string", "format": "uuid" },
+          "unitOfMeasureId": { "type": "string", "format": "uuid" }, "uomPieces": { "type": "integer" }, "uomPcsXPackaging": { "type": "integer" },
+          "quantity": { "type": "number", "minimum": 0, "exclusiveMinimum": true }, "unitPrice": { "type": "number", "minimum": 0 },
+          "discountType": { "type": "string", "enum": ["NONE", "PERCENTAGE", "FIXED"] }, "discountValue": { "type": "number", "minimum": 0 },
+          "sortOrder": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "OrderChargeInput": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "chargeTypeId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "maxLength": 255 }, "type": { "type": "string", "enum": ["FIXED", "PERCENTAGE"] },
+          "value": { "type": "number", "minimum": 0 }, "sortOrder": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "CreateOrderRequest": {
+        "type": "object",
+        "required": ["clientId", "lines"],
+        "properties": {
+          "clientId": { "type": "string", "format": "uuid" }, "clientName": { "type": "string", "maxLength": 255 },
+          "quoteId": { "type": "string", "format": "uuid" }, "shippingAddressId": { "type": "string", "format": "uuid" }, "billingAddressId": { "type": "string", "format": "uuid" },
+          "taxId": { "type": "string", "format": "uuid" }, "applyTaxBeforeDiscount": { "type": "boolean" },
+          "discountType": { "type": "string", "enum": ["NONE", "PERCENTAGE", "FIXED"] }, "discountValue": { "type": "number", "minimum": 0 },
+          "sellerId": { "type": "string", "format": "uuid" }, "sellerName": { "type": "string", "maxLength": 255 },
+          "shippingAddressFormatted": { "type": "string", "maxLength": 255 }, "billingAddressFormatted": { "type": "string", "maxLength": 255 },
+          "notes": { "type": "string", "maxLength": 2000 }, "internalNotes": { "type": "string", "maxLength": 2000 },
+          "paymentTermId": { "type": "string", "format": "uuid" }, "deliveryDate": { "type": "string", "format": "date-time" },
+          "source": { "type": "string", "maxLength": 255 },
+          "lines": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/OrderLineInput" } },
+          "charges": { "type": "array", "items": { "$ref": "#/components/schemas/OrderChargeInput" } },
+          "markAsInvoiced": { "type": "boolean", "description": "When true, the invoice service generates the CFDI synchronously after creating the order." }
+        }
+      },
+      "UpdateOrderRequest": {
+        "type": "object",
+        "required": ["clientId", "lines"],
+        "properties": {
+          "clientId": { "type": "string", "format": "uuid" }, "clientName": { "type": "string", "maxLength": 255 },
+          "shippingAddressId": { "type": "string", "format": "uuid" }, "billingAddressId": { "type": "string", "format": "uuid" },
+          "taxId": { "type": "string", "format": "uuid" }, "applyTaxBeforeDiscount": { "type": "boolean" },
+          "discountType": { "type": "string", "enum": ["NONE", "PERCENTAGE", "FIXED"] }, "discountValue": { "type": "number", "minimum": 0 },
+          "sellerId": { "type": "string", "format": "uuid" }, "sellerName": { "type": "string", "maxLength": 255 },
+          "notes": { "type": "string", "maxLength": 2000 }, "internalNotes": { "type": "string", "maxLength": 2000 },
+          "paymentTermId": { "type": "string", "format": "uuid" }, "deliveryProviderId": { "type": "string", "format": "uuid" },
+          "deliveryDate": { "type": "string", "format": "date-time" }, "source": { "type": "string", "maxLength": 255 },
+          "lines": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/OrderLineInput" } },
+          "charges": { "type": "array", "items": { "$ref": "#/components/schemas/OrderChargeInput" } }
+        }
+      },
+      "ChangeOrderStatusRequest": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string", "enum": ["DRAFT", "CONFIRMED", "CANCELLED", "VOIDED"] } } },
+      "ChangeDeliveryStatusRequest": { "type": "object", "required": ["deliveryStatusId"], "properties": { "deliveryStatusId": { "type": "string", "format": "uuid" }, "deliveryProviderId": { "type": "string", "format": "uuid" } } },
+
+      "PaymentAllocationInput": {
+        "type": "object", "required": ["orderId", "amount"],
+        "properties": { "orderId": { "type": "string", "format": "uuid" }, "amount": { "type": "number", "minimum": 0 } }
+      },
+      "PaymentAllocation": {
+        "type": "object", "required": ["id", "paymentId", "orderId", "amount"],
+        "properties": { "id": { "type": "string", "format": "uuid" }, "paymentId": { "type": "string", "format": "uuid" }, "orderId": { "type": "string", "format": "uuid" }, "amount": { "type": "number" } }
+      },
+      "Payment": {
+        "type": "object",
+        "required": ["id", "organizationId", "paymentNumber", "clientId", "amount", "allocations", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" },
+          "paymentNumber": { "type": "string" }, "clientId": { "type": "string", "format": "uuid" }, "clientName": { "type": "string" },
+          "amount": { "type": "number" }, "paymentMethodId": { "type": "string", "format": "uuid" }, "paymentMethod": { "$ref": "#/components/schemas/PaymentMethod" },
+          "referenceNumber": { "type": "string" }, "reference2": { "type": "string" },
+          "voucherUrl": { "type": "string", "format": "uri" }, "voucherUrl2": { "type": "string", "format": "uri" }, "notes": { "type": "string" },
+          "creditMemoId": { "type": "string", "format": "uuid" }, "createdById": { "type": "string", "format": "uuid" },
+          "allocations": { "type": "array", "items": { "$ref": "#/components/schemas/PaymentAllocation" } },
+          "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }, "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "CreatePaymentRequest": {
+        "type": "object",
+        "required": ["clientId", "amount"],
+        "properties": {
+          "clientId": { "type": "string", "format": "uuid" }, "clientName": { "type": "string" },
+          "amount": { "type": "number", "minimum": 0 },
+          "paymentMethodId": { "type": "string", "format": "uuid" }, "referenceNumber": { "type": "string" }, "reference2": { "type": "string" },
+          "voucherUrl": { "type": "string", "format": "uri" }, "voucherKey": { "type": "string" }, "voucherKey2": { "type": "string" }, "notes": { "type": "string" },
+          "allocations": { "type": "array", "items": { "$ref": "#/components/schemas/PaymentAllocationInput" } }
+        }
+      },
+      "CreditMemoLine": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "creditMemoId": { "type": "string", "format": "uuid" },
+          "productId": { "type": "string", "format": "uuid" }, "quantity": { "type": "number" }, "unitPrice": { "type": "number" }, "lineTotal": { "type": "number" }
+        }
+      },
+      "CreditMemo": {
+        "type": "object",
+        "required": ["id", "organizationId", "creditMemoNumber", "clientId", "subtotal", "total", "lines", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "organizationId": { "type": "string", "format": "uuid" },
+          "creditMemoNumber": { "type": "string" }, "clientId": { "type": "string", "format": "uuid" }, "clientName": { "type": "string" },
+          "orderId": { "type": "string", "format": "uuid" },
+          "subtotal": { "type": "number" }, "taxId": { "type": "string", "format": "uuid" }, "taxRate": { "type": "number" }, "taxAmount": { "type": "number" }, "total": { "type": "number" },
+          "isTaxExempt": { "type": "boolean" }, "notes": { "type": "string" },
+          "paymentId": { "type": "string", "format": "uuid" }, "createdById": { "type": "string", "format": "uuid" },
+          "lines": { "type": "array", "items": { "$ref": "#/components/schemas/CreditMemoLine" } },
+          "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }, "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "PaginatedCreditMemos": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/CreditMemo" } } } }] },
+
+      "OrderCountsResponse": {
+        "type": "object",
+        "required": ["all", "byDeliveryStatus", "cancelled", "voided", "noInvoice", "outstandingBalance", "pendingDeliveryCount", "thisWeekCount"],
+        "properties": {
+          "all": { "type": "integer" },
+          "byDeliveryStatus": { "type": "object", "additionalProperties": { "type": "integer" }, "description": "Counts keyed by delivery status id." },
+          "cancelled": { "type": "integer" }, "voided": { "type": "integer" }, "noInvoice": { "type": "integer" },
+          "outstandingBalance": { "type": "number" }, "pendingDeliveryCount": { "type": "integer" }, "thisWeekCount": { "type": "integer" }
         }
       }
     }
