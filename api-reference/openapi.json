@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Distrify API",
-    "description": "REST API for the Distrify platform — organization, staff and related resources.",
+    "description": "REST API for the Distrify platform — login, organization, staff and related resources.",
     "version": "1.0.0"
   },
   "servers": [
@@ -16,18 +16,58 @@
     }
   ],
   "security": [
-    { "bearerAuth": [], "orgIdHeader": [] }
+    { "bearerAuth": [] }
   ],
   "tags": [
+    { "name": "Authentication", "description": "Firebase token exchange, multi-organization selection" },
     { "name": "Organization", "description": "Organization profile" },
-    { "name": "Staff", "description": "Staff member CRUD" }
+    { "name": "Staff", "description": "Staff member CRUD, profile and permissions" }
   ],
   "paths": {
+    "/api/users/v1/auth/organizations": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "List my organizations",
+        "description": "Returns the organizations the authenticated user belongs to. Call this right after Firebase sign-in to decide whether to show an organization picker (`needsSelection: true`) or proceed straight into the app.",
+        "responses": {
+          "200": {
+            "description": "Organizations available to the user",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthOrganizationsResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/users/v1/auth/default-organization": {
+      "put": {
+        "tags": ["Authentication"],
+        "summary": "Set my default organization",
+        "description": "Marks one of the user's organizations as the default. The api-gateway will inject `x-org-id` based on this value on every subsequent request.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SetDefaultOrgRequest" }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "Default organization updated" },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/api/organizations/v1/profile": {
       "get": {
         "tags": ["Organization"],
         "summary": "Get organization profile",
-        "description": "Returns the full profile of the organization identified by the `x-org-id` header.",
+        "description": "Returns the full profile of the user's current organization (resolved by the gateway from the bearer token).",
         "responses": {
           "200": {
             "description": "Organization profile",
@@ -42,11 +82,60 @@
         }
       }
     },
+    "/api/organizations/v1/staff/profile": {
+      "get": {
+        "tags": ["Staff"],
+        "summary": "Get my staff profile",
+        "description": "Returns the staff record corresponding to the authenticated user inside their current organization.",
+        "responses": {
+          "200": {
+            "description": "Staff member",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Staff" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/organizations/v1/staff/{id}/permissions": {
+      "get": {
+        "tags": ["Staff"],
+        "summary": "Get staff permissions",
+        "description": "Returns the flattened list of permission keys granted to the staff member through their assigned roles. Permission keys look like `routes.dispatch.access`, `settings.access`, etc.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Staff member UUID",
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Permission keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "example": ["settings.access", "routes.dispatch.access"]
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/api/organizations/v1/staff": {
       "get": {
         "tags": ["Staff"],
         "summary": "List staff",
-        "description": "Returns a paginated list of staff members in the scoped organization.",
+        "description": "Returns a paginated list of staff members in the user's current organization.",
         "parameters": [
           {
             "name": "page",
@@ -88,7 +177,7 @@
       "post": {
         "tags": ["Staff"],
         "summary": "Create staff",
-        "description": "Creates a new staff member in the scoped organization.",
+        "description": "Creates a new staff member in the user's current organization.",
         "requestBody": {
           "required": true,
           "content": {
@@ -221,18 +310,12 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Firebase ID token issued by the auth service."
-      },
-      "orgIdHeader": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "x-org-id",
-        "description": "UUID of the organization to scope the request to."
+        "description": "Firebase ID token issued after sign-in. Send as `Authorization: Bearer <idToken>`. The api-gateway resolves the user, validates the token and injects organization scope on every downstream call — clients never set `x-org-id` themselves."
       }
     },
     "responses": {
       "Unauthorized": {
-        "description": "Missing or invalid credentials / org scope",
+        "description": "Missing or invalid credentials",
         "content": {
           "application/json": {
             "schema": { "$ref": "#/components/schemas/Error" }
@@ -271,6 +354,39 @@
         "properties": {
           "message": { "type": "string", "example": "Resource not found" },
           "statusCode": { "type": "integer", "example": 404 }
+        }
+      },
+      "OrgSummary": {
+        "type": "object",
+        "required": ["organizationId", "organizationName", "role", "isDefault", "userId"],
+        "properties": {
+          "organizationId": { "type": "string", "format": "uuid" },
+          "organizationName": { "type": "string", "example": "Acme Distributors" },
+          "role": { "type": "string", "enum": ["STAFF", "CLIENT", "ANONYMOUS"], "example": "STAFF" },
+          "isDefault": { "type": "boolean", "description": "Whether this organization is currently the user's default scope" },
+          "userId": { "type": "string", "format": "uuid", "description": "The user record inside this organization" }
+        }
+      },
+      "AuthOrganizationsResponse": {
+        "type": "object",
+        "required": ["authId", "organizations", "needsSelection"],
+        "properties": {
+          "authId": { "type": "string", "description": "Firebase UID for the authenticated user" },
+          "organizations": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/OrgSummary" }
+          },
+          "needsSelection": {
+            "type": "boolean",
+            "description": "`true` when the user has more than one organization and no default chosen yet — the UI must prompt the user to pick one."
+          }
+        }
+      },
+      "SetDefaultOrgRequest": {
+        "type": "object",
+        "required": ["organizationId"],
+        "properties": {
+          "organizationId": { "type": "string", "format": "uuid", "description": "Must be one of the organizations returned by `GET /auth/organizations`" }
         }
       },
       "Organization": {

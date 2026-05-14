@@ -1,0 +1,142 @@
+---
+title: 'Sign in'
+description: 'How a staff member authenticates against Distrify, and what happens when they belong to multiple organizations'
+---
+
+## Overview
+
+Authentication on Distrify is a two-stage flow:
+
+1. **Firebase Auth** issues an ID token (JWT) when the user signs in.
+2. The Distrify **api-gateway** verifies that token on every request, resolves the user, picks an organization scope and injects `x-org-id` into the downstream service call. Clients never set `x-org-id` themselves — if they do, the gateway strips it.
+
+The whole client lives in [`jadix/src/modules/auth`](https://github.com/distrifyllc/jadix). The reference implementation is `AuthProvider.tsx`.
+
+## Step 1 — Sign in with Firebase
+
+The web app uses the Firebase JS SDK directly. Three methods are supported:
+
+| Method | Firebase call |
+|---|---|
+| Email + password | `signInWithEmailAndPassword(auth, email, password)` |
+| Google | `signInWithPopup(auth, new GoogleAuthProvider())` |
+| Phone + OTP | `signInWithPhoneNumber(auth, phone, recaptcha)` → `result.confirm(code)` |
+
+When any of those resolve, Firebase persists the session and `onAuthStateChanged` fires with the `User`. From that user you can call `user.getIdToken()` to retrieve the JWT that goes in `Authorization: Bearer ...` on every subsequent request.
+
+<Note>
+The token expires every hour. The Firebase SDK refreshes it automatically; if you call the API from a non-JS client, refresh the token with the [Firebase REST refresh endpoint](https://firebase.google.com/docs/reference/rest/auth#section-refresh-token).
+</Note>
+
+## Step 2 — Discover the user's organizations
+
+Once Firebase has authenticated, ask the platform which organizations the user belongs to:
+
+<Card title="GET /api/users/v1/auth/organizations" icon="building" href="/api-reference/authentication/list-organizations">
+  Returns `{ authId, organizations[], needsSelection }`.
+</Card>
+
+### Response shape
+
+```json
+{
+  "authId": "firebase-uid-abc123",
+  "organizations": [
+    {
+      "organizationId": "0190a4f7-7d39-7c2c-9b1a-9c8a2e7d3f01",
+      "organizationName": "Acme Distributors",
+      "role": "STAFF",
+      "isDefault": true,
+      "userId": "0190a4f8-..."
+    },
+    {
+      "organizationId": "0190b121-...",
+      "organizationName": "Beta Wholesale",
+      "role": "STAFF",
+      "isDefault": false,
+      "userId": "0190b122-..."
+    }
+  ],
+  "needsSelection": true
+}
+```
+
+The `needsSelection` flag tells the frontend whether to short-circuit or prompt the user.
+
+## Step 3 — Branch on `needsSelection`
+
+There are three cases the frontend has to handle, all of them driven by the response above.
+
+<Tabs>
+  <Tab title="Single organization">
+    `needsSelection` is `false` and the array has exactly one entry. The user's default scope is unambiguous — go straight to step 4.
+  </Tab>
+  <Tab title="Multiple organizations">
+    `needsSelection` is `true`. The user belongs to more than one organization and has not picked a default yet. Show an organization picker UI (see `OrgPickerDialog.tsx` in jadix). When the user picks one, call:
+
+    <Card title="PUT /api/users/v1/auth/default-organization" icon="check" href="/api-reference/authentication/set-default-organization">
+      Body: `{ "organizationId": "..." }`. Marks that org as the default; subsequent calls are scoped to it.
+    </Card>
+
+    After a `204`, proceed to step 4. The choice is persisted server-side, so the next time the user signs in, `needsSelection` will be `false`.
+  </Tab>
+  <Tab title="No organizations">
+    The call returns a 401 (the firebase user has no record in `users`/`staff` yet). The frontend should open the **organization setup dialog** so the user creates an organization. See `OrganizationSetupDialog.tsx`.
+  </Tab>
+</Tabs>
+
+## Step 4 — Bootstrap the session
+
+With the organization scope settled, fetch the three pieces of context the app needs:
+
+<CardGroup cols={3}>
+  <Card title="Organization profile" href="/api-reference/organization/profile">
+    `GET /api/organizations/v1/profile` — name, logo, invoice prefix, defaults.
+  </Card>
+  <Card title="Staff profile" href="/api-reference/staff/profile">
+    `GET /api/organizations/v1/staff/profile` — the staff record for this user.
+  </Card>
+  <Card title="Staff permissions" href="/api-reference/staff/permissions">
+    `GET /api/organizations/v1/staff/{id}/permissions` — flat list of permission keys to feed your authorization layer.
+  </Card>
+</CardGroup>
+
+In jadix this is `fetchProfiles()` in `AuthProvider.tsx`. The three calls run in parallel.
+
+## Putting it all together
+
+```ts
+import { onAuthStateChanged, signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import { api } from "@/lib/api";
+
+await signInWithEmailAndPassword(auth, email, password);
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) return;
+
+  const { organizations, needsSelection } = await api.getAuthOrganizations();
+
+  if (needsSelection) {
+    const chosen = await promptUserToPickOrg(organizations);
+    await api.setDefaultOrganization(chosen.organizationId);
+  }
+
+  const [organization, staff] = await Promise.all([
+    api.getOrganizationProfile(),
+    api.getStaffProfile(),
+  ]);
+  const permissions = await api.getStaffPermissions(staff.id);
+});
+```
+
+## What the api-gateway does for you
+
+You never send `x-org-id`. The gateway:
+
+1. Validates the bearer token against Firebase.
+2. Looks up the user and reads their current default organization.
+3. Sets `x-org-id` on the proxied request before it reaches any downstream service.
+4. Strips any inbound `x-org-id` to prevent spoofing.
+
+That means an org switch is always a single call to `PUT /auth/default-organization` — there is no header or cookie to keep in sync on the client.
