@@ -414,6 +414,18 @@
         }
       }
     },
+    "/api/orders/v1/{id}/timeline": {
+      "get": {
+        "tags": ["Orders"], "summary": "Get order timeline",
+        "description": "Returns the full event log for an order — creation, delivery transitions and payment activity — ordered ascending by `occurredAt`. Powers the **SEGUIMIENTO** UI in jadix, storefront and mobile.\n\nEvents have a `type` of `GENERAL` (order lifecycle), `DELIVERY` (logistics transitions; `status` carries the new delivery status UUID — resolve via [`/delivery-statuses`](/api-reference/orders/delivery-statuses)) or `PAYMENT` (payment added/removed; `status` is the resulting order payment state and `notes` is `\"<amount> <paymentMethodId>\"`).",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Chronological timeline events", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/OrderStatusEvent" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/api/orders/v1/{id}/payments": {
       "get": {
         "tags": ["Orders"], "summary": "List payments for an order",
@@ -854,6 +866,25 @@
         }
       },
       "PaginatedOrders": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } } } }] },
+
+      "OrderStatusEvent": {
+        "type": "object",
+        "required": ["id", "organizationId", "orderId", "status", "type", "occurredAt", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "orderId": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "description": "For `GENERAL` events: the new order status (e.g. `CREATED`, `CONFIRMED`, `CANCELLED`). For `DELIVERY` events: the UUID of the new delivery status (resolve against [`/delivery-statuses`](/api-reference/orders/delivery-statuses)). For `PAYMENT` events: `UNPAID` | `PARTIAL` | `PAID` | `PAYMENT_REMOVED` | `REFUNDED`.", "example": "CREATED" },
+          "type": { "type": "string", "enum": ["GENERAL", "DELIVERY", "PAYMENT"] },
+          "occurredAt": { "type": "string", "format": "date-time" },
+          "byUserId": { "type": "string", "format": "uuid", "nullable": true, "description": "Populated from the gateway-injected `x-user-id` header when the actor is a user (e.g. a storefront customer)." },
+          "byStaffId": { "type": "string", "format": "uuid", "nullable": true, "description": "Populated from the gateway-injected `x-staff-id` header when the actor is a staff member." },
+          "notes": { "type": "string", "nullable": true, "description": "Free-form payload. For `PAYMENT` events when a payment is added: `\"<amount> <paymentMethodId>\"`. Empty otherwise." },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
 
       "OrderLineInput": {
         "type": "object",

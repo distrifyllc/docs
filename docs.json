@@ -104,6 +104,7 @@
               "api-reference/orders/update",
               "api-reference/orders/change-status",
               "api-reference/orders/change-delivery-status",
+              "api-reference/orders/timeline",
               "api-reference/orders/mark-invoiced",
               "api-reference/orders/void",
               "api-reference/orders/invoice-pdf",

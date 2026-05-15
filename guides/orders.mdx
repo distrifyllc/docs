@@ -94,13 +94,27 @@ Only run the dedicated payments call if you need to mutate them — for read, th
 
 ### Tracking timeline (SEGUIMIENTO)
 
-The timeline (`Confirmada → Preparada → En tránsito → Entregada`) is rendered from `OrderDTO.deliveryStatusHistory` — an array of `{ deliveryStatusId, deliveryStatusName, changedAt, changedBy }`. The current step is the entry with the latest `changedAt`. Future steps (statuses the order has not yet reached) are inferred from the org's `deliveryStatuses` ordering:
+The timeline is rendered from a dedicated endpoint that returns the full chronological event log for the order — creation, delivery transitions and payment activity:
 
 ```
-GET /api/orders/v1/delivery-statuses
+GET /api/orders/v1/{orderId}/timeline
 ```
 
-Render every status in `sortOrder`, marking the ones present in `deliveryStatusHistory` as completed and the next one as the active step.
+See [`/orders/{id}/timeline`](/api-reference/orders/timeline) for the full schema. Events are returned **ascending by `occurredAt`** (oldest first) and carry a `type` of `GENERAL`, `DELIVERY` or `PAYMENT`:
+
+- `GENERAL` — order lifecycle (`CREATED`, `CONFIRMED`, …). Render with a neutral icon.
+- `DELIVERY` — the `status` field is the **UUID of the new delivery status**. Resolve to a label by caching the org's delivery-status list on startup:
+  ```
+  GET /api/orders/v1/delivery-statuses
+  ```
+  Render the active step using the timestamp of the latest `DELIVERY` event, and scaffold the future steps from the cached list ordered by `sortOrder`.
+- `PAYMENT` — `status` is the resulting order payment state (`UNPAID` | `PARTIAL` | `PAID` | `PAYMENT_REMOVED`). When a payment is recorded, `notes` carries `"<amount> <paymentMethodId>"` for display.
+
+The most recent event is the "current step". Use `byUserId` / `byStaffId` (gateway-injected) to attribute each entry if your UI surfaces "who" advanced the status.
+
+<Note>
+Polling cadence on the order-detail screen is 30s — events are infrequent. Refresh immediately after any local action that mutates the order (status change, add/remove payment) so the timeline stays in sync.
+</Note>
 
 ### Editing products on the order
 
@@ -143,6 +157,7 @@ Each returns the updated `OrderDTO`. Refresh the timeline from the response.
 | Status / payment counts | [[`GET /api/search/v1/orders/counts`](/api-reference/search/order-counts)](/api-reference/search/order-counts) | `OrderCountsResponse` |
 | Sales rep dropdown | [[`GET /api/organizations/v1/staff`](/api-reference/staff/list)](/api-reference/staff/list) | `PaginatedResponse<StaffDTO>` |
 | Delivery statuses (timeline scaffold) | [`GET /api/orders/v1/delivery-statuses`](/api-reference/orders/delivery-statuses) | `DeliveryStatusDTO[]` |
+| Order timeline (SEGUIMIENTO) | [`GET /api/orders/v1/{id}/timeline`](/api-reference/orders/timeline) | `OrderStatusEvent[]` |
 | Order detail | [`GET /api/orders/v1/{id}`](/api-reference/orders/get) | `OrderDTO` |
 | Order payments (mutable) | [`GET /api/orders/v1/{id}/payments`](/api-reference/orders/order-payments) | `PaymentDTO[]` |
 | Update order / line items / notes | [`PUT /api/orders/v1/{id}`](/api-reference/orders/update) | `UpdateOrderRequest` → `OrderDTO` |
@@ -157,4 +172,4 @@ Each returns the updated `OrderDTO`. Refresh the timeline from the response.
 - **Duplicar pedido.** No `POST /orders/v1/{id}/duplicate` endpoint exists. The reference implementation reads the order via `GET /orders/v1/{id}`, copies `clientId`, `warehouseId`, `lineItems` and `charges` into a fresh `CreateOrderRequest`, and re-uses the [Cart → Checkout](/guides/cart-checkout) flow. A server-side duplicate would simplify this and preserve audit lineage.
 - **Ticket Zebra (ZPL).** Same gap as the [confirmation screen](/guides/cart-checkout#step-3--confirmation). Either add `GET /api/orders/v1/{id}/ticket?format=zpl` or generate the ZPL on the device from the OrderDTO.
 - **Export filtered list to PDF.** "Exportar" should output the rows currently visible. There is no `POST /api/search/v1/orders/export` today; add one that mirrors the search query string and returns a PDF/CSV.
-- **Tracking timeline order.** `deliveryStatusHistory` does not currently include the *next* step's expected timestamp (ETA). The mobile spec only renders historic timestamps, so this is not blocking — but flag it if a future "ETA next step" requirement appears.
+- **Tracking timeline ETA.** [`/timeline`](/api-reference/orders/timeline) returns historical events only — no expected timestamp for the *next* step. The mobile spec only renders historic timestamps, so this is not blocking, but flag it if a future "ETA next step" requirement appears.
