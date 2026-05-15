@@ -533,7 +533,7 @@
           { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
           { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } }
         ],
-        "responses": { "200": { "description": "Paginated products", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedProducts" } } } } }
+        "responses": { "200": { "description": "Paginated products with drill-down facets", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductSearchResponse" } } } } }
       }
     },
     "/api/search/v1/orders": {
@@ -692,6 +692,38 @@
         }
       },
       "PaginatedProducts": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } } } }] },
+
+      "FacetBucket": {
+        "type": "object",
+        "required": ["id", "name", "count"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "count": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "ProductSearchFacets": {
+        "type": "object",
+        "required": ["categories", "brands"],
+        "properties": {
+          "categories": { "type": "array", "items": { "$ref": "#/components/schemas/FacetBucket" } },
+          "brands":     { "type": "array", "items": { "$ref": "#/components/schemas/FacetBucket" } }
+        }
+      },
+      "ProductSearchResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Pagination" },
+          {
+            "type": "object",
+            "required": ["data", "facets"],
+            "properties": {
+              "data": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } },
+              "facets": { "$ref": "#/components/schemas/ProductSearchFacets" }
+            },
+            "description": "Counts in `facets.categories` are computed with every active filter EXCEPT the category selection; same drill-down logic applies to `facets.brands`. Buckets with `count = 0` are excluded."
+          }
+        ]
+      },
 
       "UomPriceSummary": {
         "type": "object",

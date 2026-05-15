@@ -74,11 +74,28 @@ GET /api/search/v1/products
 | `page` | int | 1-indexed |
 | `pageSize` | int | default 20 |
 
-Response is `PaginatedResponse<ProductDTO>`.
+Response is a `ProductSearchResponse` — the standard paginated `data` plus a `facets` block with drill-down counts for the category and brand pills:
 
-<Note>
-**Dynamic category × brand counts.** The Linear spec calls for category and brand pills whose counts update against the current filter (e.g. selecting "Adidas" reduces the category counts to only categories that contain Adidas products). The current API exposes `listBrands` and `listCategories` but **without count aggregation**. Either compute counts client-side from the product page result, or coordinate with backend to add a `?withCounts=true` flag — see [Gaps](#gaps).
-</Note>
+```json
+{
+  "data": [ /* ProductDTO[] */ ],
+  "total": 42, "page": 1, "pageSize": 20, "totalPages": 3,
+  "facets": {
+    "categories": [{ "id": "...", "name": "Alimentos", "count": 12 }, …],
+    "brands":     [{ "id": "...", "name": "Acme",      "count": 9 },  …]
+  }
+}
+```
+
+### Drill-down semantics
+
+Each dimension's counts are computed against every active filter **except the selection in that same dimension**. So:
+
+- Select **Alimentos** → `facets.brands` only includes brands that have Alimentos products, with adjusted counts. `facets.categories` still shows **every** category (including Alimentos) so the user can broaden or pivot.
+- Same logic in reverse for brand selections.
+- Buckets with `count = 0` are excluded — render whatever the API returns.
+
+Single-value `categoryId=...` and `brandId=...` query params still work as legacy aliases for the array form.
 
 ## Product card data
 
@@ -161,6 +178,5 @@ If `results.length === 1`, jump to its [Product Detail](/guides/product-detail) 
 
 These are mentioned in the Linear spec but have no matching endpoint today; coordinate with the backend team before relying on them:
 
-- **Category × Brand cross-filter counts.** No `withCounts` flag on `listBrands` / `listCategories`. Today the frontend must either compute the counts from the product page or hit the listings repeatedly with the active filter.
 - **"Last 5 orders" semantics.** The reference flow paginates `GET /orders` with `pageSize=5`. There is no contract that guarantees ordering; if the field reps complain about stale "recently purchased" lists, add `orderBy=createdAt,desc` to the query and confirm the backend honours it.
 - **Warehouse permission gate.** The org-side flag controlling whether a user can switch warehouses is not exposed in `StaffDTO`. The frontend currently keys off `permissions[]` returned by [`GET /staff/{id}/permissions`](/api-reference/staff/permissions) — pick a key (e.g. `inventory.switch_warehouse`) and align with backend before shipping.
