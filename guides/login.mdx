@@ -1,6 +1,6 @@
 ---
-title: 'Sign in'
-description: 'How a staff member authenticates against Distrify, and what happens when they belong to multiple organizations'
+title: "Sign in"
+description: "How a staff member authenticates against Distrify, and what happens when they belong to multiple organizations"
 ---
 
 ## Overview
@@ -11,16 +11,19 @@ Authentication uses Firebase Auth on the client. After sign-in, the Firebase ID 
 
 The web app uses the Firebase JS SDK directly. Three methods are supported:
 
-| Method | Firebase call |
-|---|---|
-| Email + password | `signInWithEmailAndPassword(auth, email, password)` |
-| Google | `signInWithPopup(auth, new GoogleAuthProvider())` |
-| Phone + OTP | `signInWithPhoneNumber(auth, phone, recaptcha)` → `result.confirm(code)` |
+| Method           | Firebase call                                                            |
+| ---------------- | ------------------------------------------------------------------------ |
+| Email + password | `signInWithEmailAndPassword(auth, email, password)`                      |
+| Google           | `signInWithPopup(auth, new GoogleAuthProvider())`                        |
+| Phone + OTP      | `signInWithPhoneNumber(auth, phone, recaptcha)` → `result.confirm(code)` |
 
 When any of those resolve, Firebase persists the session and `onAuthStateChanged` fires with the `User`. From that user you can call `user.getIdToken()` to retrieve the JWT.
 
 <Note>
-The token expires every hour. The Firebase SDK refreshes it automatically; if you call the API from a non-JS client, refresh the token with the [Firebase REST refresh endpoint](https://firebase.google.com/docs/reference/rest/auth#section-refresh-token).
+  The token expires every hour. The Firebase SDK refreshes it automatically; if
+  you call the API from a non-JS client, refresh the token with the [Firebase
+  REST refresh
+  endpoint](https://firebase.google.com/docs/reference/rest/auth#section-refresh-token).
 </Note>
 
 ## Step 2 — Discover the user's organizations
@@ -74,6 +77,7 @@ There are three cases the frontend has to handle, all of them driven by the resp
     </Card>
 
     After a `204`, proceed to step 4. The choice is persisted, so the next time the user signs in, `needsSelection` will be `false`.
+
   </Tab>
   <Tab title="No organizations">
     The call returns a 401 (the firebase user has no record in Distrify yet). The frontend should open the **organization setup dialog** so the user creates an organization. See `OrganizationSetupDialog.tsx`.
@@ -86,13 +90,17 @@ With the organization scope settled, fetch the three pieces of context the app n
 
 <CardGroup cols={3}>
   <Card title="Organization profile" href="/api-reference/organization/profile">
-    [`GET /api/organizations/v1/profile`](/api-reference/organization/profile) — name, logo, invoice prefix, defaults.
+    [`GET /api/organizations/v1/profile`](/api-reference/organization/profile) —
+    name, logo, invoice prefix, defaults.
   </Card>
   <Card title="Staff profile" href="/api-reference/staff/profile">
-    [`GET /api/organizations/v1/staff/profile`](/api-reference/staff/profile) — the staff record for this user.
+    [`GET /api/organizations/v1/staff/profile`](/api-reference/staff/profile) —
+    the staff record for this user.
   </Card>
   <Card title="Staff permissions" href="/api-reference/staff/permissions">
-    [`GET /api/organizations/v1/staff/{id}/permissions`](/api-reference/staff/permissions) — flat list of permission keys to feed your authorization layer.
+    [`GET /api/organizations/v1/staff/{id}
+    /permissions`](/api-reference/staff/permissions) — flat list of permission
+    keys to feed your authorization layer.
   </Card>
 </CardGroup>
 
@@ -144,7 +152,7 @@ The "¿Olvidaste tu contraseña?" link is also pure Firebase — Distrify does n
 import { sendPasswordResetEmail } from "firebase/auth";
 
 await sendPasswordResetEmail(auth, email, {
-  url: "https://jadix.distrify.us/auth/action",
+  url: "https://app.distrify.us/auth/action",
   handleCodeInApp: false,
 });
 ```
