@@ -521,7 +521,7 @@
     "/api/search/v1/products": {
       "get": {
         "tags": ["Search"], "summary": "Search products",
-        "description": "Full-text search across product name, SKU and UPC, with category, brand and stock filters. Backs the catalog grid on the mobile app.",
+        "description": "Full-text search across product name, SKU and UPC, with category, brand, stock, price-range filters and sort. Backs the catalog grid on the mobile app and the products list in Jadix.",
         "parameters": [
           { "name": "q", "in": "query", "description": "Free-text search across name, SKU and UPC", "schema": { "type": "string" } },
           { "name": "categoryId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
@@ -530,6 +530,9 @@
           { "name": "brandIds[]", "in": "query", "description": "Multiple brand UUIDs", "schema": { "type": "array", "items": { "type": "string", "format": "uuid" } } },
           { "name": "hasStock", "in": "query", "description": "\"true\" or \"false\" — filter by in-stock availability", "schema": { "type": "string", "enum": ["true", "false"] } },
           { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "priceMin", "in": "query", "description": "Inclusive lower bound on `price`. Negative values are ignored.", "schema": { "type": "number", "minimum": 0 } },
+          { "name": "priceMax", "in": "query", "description": "Inclusive upper bound on `price`. Negative values are ignored.", "schema": { "type": "number", "minimum": 0 } },
+          { "name": "sort", "in": "query", "description": "Result ordering. `relevance` sorts by `catalogPriority` ascending (products without priority go last), tie-broken by `createdAt` descending. Defaults to `created_desc` on this endpoint.", "schema": { "type": "string", "enum": ["relevance", "created_desc", "created_asc", "name_asc", "name_desc", "price_asc", "price_desc"], "default": "created_desc" } },
           { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
           { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } }
         ],
@@ -704,10 +707,12 @@
       },
       "ProductSearchFacets": {
         "type": "object",
-        "required": ["categories", "brands"],
+        "required": ["categories", "brands", "priceMin", "priceMax"],
         "properties": {
           "categories": { "type": "array", "items": { "$ref": "#/components/schemas/FacetBucket" } },
-          "brands":     { "type": "array", "items": { "$ref": "#/components/schemas/FacetBucket" } }
+          "brands":     { "type": "array", "items": { "$ref": "#/components/schemas/FacetBucket" } },
+          "priceMin":   { "type": "number", "description": "Lowest `price` across the result set after every filter except `priceMin`/`priceMax` (same drill-down logic as the category and brand facet counts). Use to initialize the lower bound of a price-range slider. Zero when the result set is empty." },
+          "priceMax":   { "type": "number", "description": "Highest `price` across the result set after every filter except `priceMin`/`priceMax`. Use to initialize the upper bound of a price-range slider. Zero when the result set is empty." }
         }
       },
       "ProductSearchResponse": {
