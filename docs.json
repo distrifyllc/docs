@@ -27,18 +27,18 @@
               "guides/cart-checkout",
               "guides/orders"
             ]
+          },
+          {
+            "group": "Sales flows",
+            "pages": [
+              "guides/quotations"
+            ]
           }
         ]
       },
       {
         "tab": "API reference",
         "groups": [
-          {
-            "group": "API documentation",
-            "pages": [
-              "api-reference/introduction"
-            ]
-          },
           {
             "group": "Authentication",
             "pages": [
@@ -131,6 +131,19 @@
             "group": "Purchases",
             "pages": [
               "api-reference/purchases/incoming-qty"
+            ]
+          },
+          {
+            "group": "Quotations",
+            "pages": [
+              "api-reference/quotations/list",
+              "api-reference/quotations/create",
+              "api-reference/quotations/get",
+              "api-reference/quotations/update",
+              "api-reference/quotations/delete",
+              "api-reference/quotations/change-status",
+              "api-reference/quotations/convert",
+              "api-reference/quotations/last-quoted-price"
             ]
           },
           {

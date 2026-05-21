@@ -1,0 +1,142 @@
+---
+title: 'Quotations & converting to orders'
+description: 'Creating a quotation, editing it while in draft, and converting it into a confirmed order'
+---
+
+A **quotation** is a non-binding sales proposal. It captures the same line items, pricing and totals as an order, but **does not touch inventory** and does not lock anything in — it is meant to be negotiated, sent to the client, and either accepted (converted to an order) or discarded.
+
+The quote service exposes a small CRUD surface plus two action endpoints: changing status and converting to an order.
+
+## Quick reference
+
+| Action | Endpoint |
+|---|---|
+| Create | [`POST /api/quotes/v1`](/api-reference/quotations/create) |
+| Read   | [`GET /api/quotes/v1/{id}`](/api-reference/quotations/get) |
+| Update | [`PUT /api/quotes/v1/{id}`](/api-reference/quotations/update) — `DRAFT` only |
+| Delete | [`DELETE /api/quotes/v1/{id}`](/api-reference/quotations/delete) — `DRAFT` only |
+| Toggle status | [`PATCH /api/quotes/v1/{id}/status`](/api-reference/quotations/change-status) |
+| Convert to order | [`POST /api/quotes/v1/{id}/convert`](/api-reference/quotations/convert) |
+| Last quoted price (client × product) | [`GET …/last-quoted-price`](/api-reference/quotations/last-quoted-price) |
+
+## Statuses
+
+```
+DRAFT  ─►  CONFIRMED (read-only)
+        │
+        └─► converted to order (CONFIRMED + orderId set)
+```
+
+- `DRAFT` — fully editable. Lines, totals, client and addresses can all change.
+- `CONFIRMED` — read-only. Set automatically once the quotation is converted to an order, or manually via the change-status endpoint when you want to lock in a proposal without converting yet.
+
+A confirmed quotation can be flipped back to `DRAFT` with `PATCH /{id}/status` as long as it has **not** been converted (`orderId == null`). Once converted, it stays `CONFIRMED` forever and is kept for audit alongside the order it created.
+
+## Creating a quotation
+
+```http
+POST /api/quotes/v1
+Content-Type: application/json
+Authorization: Bearer <idToken>
+
+{
+  "clientId": "5f3a…",                       // optional — see "anonymous quotations" below
+  "sellerId": "8b1d…",                       // optional; defaults to the calling staff
+  "priceListId": "c7e3…",                    // optional; informational, prices are still per-line
+  "shippingAddressId": "11a2…",              // optional
+  "billingAddressId":  "22b3…",              // optional
+  "taxId": "fa90…",
+  "applyTaxBeforeDiscount": false,
+  "discountType": "PERCENTAGE",
+  "discountValue": 5,
+  "validUntil": "2026-06-30T00:00:00Z",      // optional
+  "source": "pos",
+  "notes": "Cliente pidió cotización rápida.",
+  "lines": [
+    {
+      "productId": "aa11…",
+      "warehouseId": "ww22…",                // optional on quotations, REQUIRED for conversion
+      "unitOfMeasureId": "uu33…",
+      "quantity": 3,
+      "unitPrice": 120.00,
+      "discountType": "NONE",
+      "discountValue": 0
+    }
+  ],
+  "charges": [
+    { "name": "Envío", "type": "FIXED", "value": 15 }
+  ]
+}
+```
+
+The response is a [`Quotation`](/api-reference/quotations/get) with computed `subtotal`, `discountAmount`, `taxAmount`, `total` and a unique `quoteNumber`. The newly created quotation is always in `DRAFT`.
+
+### Anonymous quotations
+
+`clientId` is **optional** at creation time. This supports flows like the catalog or POS, where a buyer is browsing without being logged in and the sales rep wants to capture a proposal first and assign a client later. The `clientName` field can be used as a placeholder until a client record is attached via `PUT /{id}`.
+
+A quotation without `clientId` cannot be converted to an order — see below.
+
+## Editing a quotation
+
+`PUT /{id}` replaces the entire body. The whole `lines` array is recomputed on every update — there is no incremental "add a line" endpoint.
+
+Returns `409 Conflict` if the quotation is not `DRAFT`.
+
+## Converting to an order
+
+```http
+POST /api/quotes/v1/{id}/convert
+Authorization: Bearer <idToken>
+```
+
+The convert endpoint runs the **full order-create flow** internally — it is not a database-level copy. That has important consequences:
+
+<Steps>
+  <Step title="Preconditions">
+    The service validates three things before touching inventory. Any failure returns `409 Conflict` and leaves the quotation untouched:
+
+    - Quotation `status` must be `DRAFT` and not already converted (`orderId == null`).
+    - `clientId` must be set. Anonymous quotations cannot be converted; assign a client via `PUT /{id}` first.
+    - Every line must have a `warehouseId`. Quotations allow lines without a warehouse (you may be quoting a product with stock split across locations), but orders ship from a specific warehouse, so the field is required for conversion.
+  </Step>
+
+  <Step title="Order is created via the order service">
+    The quote service calls the order service's gRPC `CreateOrder`. The new order is created in `CONFIRMED` status with `quoteId` set to the source quotation, totals copied line-for-line, and addresses auto-resolved from `shippingAddressId` / `billingAddressId`.
+  </Step>
+
+  <Step title="Quotation is marked CONFIRMED">
+    Only after the order is created does the quotation transition: `status = CONFIRMED`, `orderId = <new order id>`, and a `quotation.updated` Kafka event fires.
+
+    If the order creation fails (out-of-stock, validation, network) the quotation stays in `DRAFT` and no inventory is touched — the convert call simply returns the error.
+  </Step>
+</Steps>
+
+After conversion, the response is the **quotation** with `orderId` populated. To work with the new order, follow the returned `orderId` with `GET /api/orders/v1/{orderId}`.
+
+## What orders enforce that quotations do not
+
+This is the most common source of "the quotation looked fine, why won't it convert?" support tickets. Quotations are deliberately permissive — they're a sales tool. Orders are the source of truth for inventory and accounting, so they enforce a stricter contract.
+
+<Note>
+  Use this table when deciding whether a customer-facing operation belongs on quotations or directly on orders.
+</Note>
+
+| Concern | Quotation | Order |
+|---|---|---|
+| **Inventory commitment** | Not touched. `GET /quoted-qty` aggregates committed-to-quotation amounts for visibility, but no reservation/shipment happens. | On create (`CONFIRMED`), stock is validated and **shipped** from the chosen warehouse. Insufficient stock → `400` rejection (unless the caller has `allowNegativeStock` permission and explicitly opts in). |
+| **`warehouseId` per line** | Optional. | **Required** — the line ships from this warehouse. |
+| **`clientId`** | Optional ("anonymous quotation"). | **Required**. |
+| **Status model** | Two states: `DRAFT` / `CONFIRMED`. | Four states: `DRAFT`, `CONFIRMED`, `CANCELLED`, `VOIDED`. Plus a separate `paymentStatus` (`UNPAID` / `PARTIAL` / `PAID`) and a configurable `deliveryStatus`. |
+| **Editing after confirmation** | Forbidden — once `CONFIRMED`, the quotation is read-only. Use the change-status endpoint to flip it back to `DRAFT` only if it hasn't been converted. | `PUT /api/orders/v1/{id}` works on `DRAFT` orders; confirmed orders only accept PATCH-style endpoints (`/status`, `/delivery-status`, payments). Edits that change line quantities re-validate stock and adjust the inventory shipment delta. |
+| **Payments** | None — there is no concept of a payment on a quotation. | Full payment surface: record payments, refunds, payment terms, balance due tracking. |
+| **Invoicing** | None. | Optional `markAsInvoiced: true` on create triggers CFDI generation; subsequent endpoints expose the invoice PDF. |
+| **Side effects on cancel** | `DELETE /{id}` soft-deletes a draft. Nothing else fires. | Cancelling/voiding a confirmed order **reverses the inventory shipment**, fires a Kafka order-status event, and updates payment/delivery state. |
+| **Validity** | `validUntil` is informational — the API does not auto-expire quotations. | No equivalent; orders are not time-bound at this layer. |
+| **Convertibility** | Can be promoted to an order via `POST /{id}/convert`. | Cannot be converted back to a quotation. |
+
+## Useful lookups
+
+- **Last quoted price** — [`GET /api/quotes/v1/clients/{clientId}/products/{productId}/last-quoted-price`](/api-reference/quotations/last-quoted-price) returns the most recent `unitPrice` quoted to a client for a product, with the timestamp it was quoted. The POS and order form use this to pre-fill prices when a known client re-quotes the same SKU.
+- **Quoted qty per product** — [`POST /api/quotes/v1/quoted-qty`](/api-reference/quotes/quoted-qty) aggregates the total `qty` currently sitting on un-converted quotations, keyed by product id. The product detail screen surfaces it next to incoming-from-purchase and on-hand stock so reps know how much demand is locked in proposals.
+- **Full-text search** — `GET /api/search/v1/quotations` is the Elasticsearch-backed list endpoint used by the desktop quotations table (filters by client, status, seller, source, date range). Same shape as [`GET /api/search/v1/orders`](/api-reference/search/orders).

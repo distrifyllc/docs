@@ -20,7 +20,8 @@
     { "name": "Orders", "description": "Orders, payments, credit memos and config" },
     { "name": "Search", "description": "Full-text search for products and orders" },
     { "name": "Purchases", "description": "Purchase orders" },
-    { "name": "Quotes", "description": "Quotations" }
+    { "name": "Quotations", "description": "Quotation CRUD, status changes and order conversion" },
+    { "name": "Quotes", "description": "Quoted qty lookup for product/inventory flows" }
   ],
   "paths": {
     "/api/users/v1/auth/organizations": {
@@ -593,6 +594,99 @@
       }
     },
 
+    "/api/quotes/v1": {
+      "get": {
+        "tags": ["Quotations"], "summary": "List quotations",
+        "description": "Returns a paginated list of quotations scoped to the caller. Sales reps only see quotations they created; managers see every quotation in the org. For full-text search across client and quote number, prefer `GET /api/search/v1/quotations`.",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "clientId", "in": "query", "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Paginated quotations", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaginatedQuotations" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Quotations"], "summary": "Create quotation",
+        "description": "Creates a quotation in `DRAFT` status. Unlike orders, creating a quotation does **NOT** validate or commit inventory — quotations are a sales proposal, stock is only touched when the quotation is converted to an order.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateQuotationRequest" } } } },
+        "responses": {
+          "201": { "description": "Quotation created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Quotation" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/api/quotes/v1/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "get": {
+        "tags": ["Quotations"], "summary": "Get quotation",
+        "responses": {
+          "200": { "description": "Quotation", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Quotation" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["Quotations"], "summary": "Update quotation",
+        "description": "Full replacement of a `DRAFT` quotation. Once a quotation is in `CONFIRMED` status (i.e. it has been converted to an order) it is read-only — this endpoint will return `409 Conflict`.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateQuotationRequest" } } } },
+        "responses": {
+          "200": { "description": "Updated quotation", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Quotation" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      },
+      "delete": {
+        "tags": ["Quotations"], "summary": "Delete quotation",
+        "description": "Soft-deletes the quotation. Only `DRAFT` quotations can be deleted; converted quotations are kept for audit alongside their order.",
+        "responses": {
+          "200": { "description": "Deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/quotes/v1/{id}/status": {
+      "patch": {
+        "tags": ["Quotations"], "summary": "Change quotation status",
+        "description": "Transitions a quotation between `DRAFT` and `CONFIRMED`. Note that `CONFIRMED` is also set automatically by `POST /{id}/convert` and once set the quotation becomes read-only — use this endpoint mainly to flip a manually-confirmed quotation back to draft.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChangeQuotationStatusRequest" } } } },
+        "responses": {
+          "200": { "description": "Updated quotation", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Quotation" } } } },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/quotes/v1/{id}/convert": {
+      "post": {
+        "tags": ["Quotations"], "summary": "Convert quotation to order",
+        "description": "Creates an `Order` from the quotation, marks the quotation as `CONFIRMED`, and links them via the order's `quoteId` and the quotation's `orderId`.\n\n**Preconditions** (return `409 Conflict` on failure):\n- Quotation status must be `DRAFT` and not already converted (`orderId == null`).\n- `clientId` must be set — anonymous quotations cannot be converted.\n- Every line must have a `warehouseId` — quotations allow lines without a warehouse, but orders do not.\n\n**Side effects** — unlike `POST /api/orders/v1`, conversion runs the full order-create flow on the line items, which means:\n- Inventory is validated (the order is rejected if any line has insufficient stock) and shipped against the chosen warehouse.\n- The order is created in `CONFIRMED` status, not `DRAFT`.\n- Order timeline + Kafka order-created events fire as if the order had been created directly.\n\nIf the order creation fails (stock, validation, etc.) the quotation stays in `DRAFT` and no inventory is touched.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Quotation after conversion, with `orderId` populated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Quotation" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/quotes/v1/clients/{clientId}/products/{productId}/last-quoted-price": {
+      "get": {
+        "tags": ["Quotations"], "summary": "Last quoted price for client × product",
+        "description": "Returns the most recent unit price quoted to this client for this product — used by the POS / order form to pre-fill the price when re-quoting a known client.",
+        "parameters": [
+          { "name": "clientId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "productId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Last quoted price (zero if none)", "content": { "application/json": { "schema": { "type": "object", "required": ["price"], "properties": { "price": { "type": "number" }, "quotedAt": { "type": "string", "format": "date-time", "nullable": true } } } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
     "/api/quotes/v1/quoted-qty": {
       "post": {
         "tags": ["Quotes"], "summary": "Quoted qty per product",
@@ -904,6 +998,150 @@
         }
       },
       "PaginatedOrders": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } } } }] },
+
+      "QuotationLineInput": {
+        "type": "object",
+        "required": ["productId", "quantity", "unitPrice"],
+        "properties": {
+          "productId": { "type": "string", "format": "uuid" },
+          "warehouseId": { "type": "string", "format": "uuid", "description": "Optional on quotations; **required** when converting to an order." },
+          "unitOfMeasureId": { "type": "string", "format": "uuid" },
+          "quantity": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
+          "unitPrice": { "type": "number", "minimum": 0 },
+          "discountType": { "type": "string", "enum": ["NONE", "PERCENTAGE", "FIXED"] },
+          "discountValue": { "type": "number", "minimum": 0 },
+          "sortOrder": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "QuotationChargeInput": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "chargeTypeId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string", "maxLength": 255 },
+          "type": { "type": "string", "enum": ["FIXED", "PERCENTAGE"] },
+          "value": { "type": "number", "minimum": 0 },
+          "sortOrder": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "QuotationLine": {
+        "type": "object",
+        "required": ["id", "quotationId", "productId", "quantity", "unitPrice", "discountType", "discountValue", "discountAmount", "lineTotal", "sortOrder"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "quotationId": { "type": "string", "format": "uuid" },
+          "productId": { "type": "string", "format": "uuid" },
+          "warehouseId": { "type": "string", "format": "uuid", "nullable": true },
+          "unitOfMeasureId": { "type": "string", "format": "uuid", "nullable": true },
+          "quantity": { "type": "number" },
+          "unitPrice": { "type": "number" },
+          "discountType": { "type": "string", "enum": ["NONE", "PERCENTAGE", "FIXED"] },
+          "discountValue": { "type": "number" },
+          "discountAmount": { "type": "number" },
+          "lineTotal": { "type": "number" },
+          "sortOrder": { "type": "integer" }
+        }
+      },
+      "QuotationCharge": {
+        "type": "object",
+        "required": ["id", "quotationId", "name", "type", "value", "amount", "sortOrder"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "quotationId": { "type": "string", "format": "uuid" },
+          "chargeTypeId": { "type": "string", "format": "uuid", "nullable": true },
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["FIXED", "PERCENTAGE"] },
+          "value": { "type": "number" },
+          "amount": { "type": "number" },
+          "sortOrder": { "type": "integer" }
+        }
+      },
+      "Quotation": {
+        "type": "object",
+        "required": ["id", "organizationId", "quoteNumber", "status", "subtotal", "total", "lines", "charges", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "quoteNumber": { "type": "string" },
+          "clientId": { "type": "string", "format": "uuid", "nullable": true, "description": "Null for anonymous quotations created from the catalog before a client is known. Must be set before the quotation can be converted to an order." },
+          "clientName": { "type": "string" },
+          "shippingAddressId": { "type": "string", "format": "uuid", "nullable": true },
+          "billingAddressId":  { "type": "string", "format": "uuid", "nullable": true },
+          "shippingAddressFormatted": { "type": "string", "description": "Read-only — auto-resolved from `shippingAddressId` at create/update." },
+          "billingAddressFormatted":  { "type": "string", "description": "Read-only — auto-resolved from `billingAddressId` at create/update." },
+          "status": { "type": "string", "enum": ["DRAFT", "CONFIRMED"], "description": "`CONFIRMED` is set automatically once the quotation has been converted to an order; once set, the quotation becomes read-only." },
+          "source": { "type": "string", "description": "Channel that originated the quotation: `web`, `pos`, `app` or `catalog`." },
+          "taxId": { "type": "string", "format": "uuid", "nullable": true },
+          "taxRate": { "type": "number" },
+          "applyTaxBeforeDiscount": { "type": "boolean" },
+          "subtotal": { "type": "number" },
+          "discountType": { "type": "string", "enum": ["NONE", "PERCENTAGE", "FIXED"] },
+          "discountValue": { "type": "number" },
+          "discountAmount": { "type": "number" },
+          "taxAmount": { "type": "number" },
+          "total": { "type": "number" },
+          "sellerId": { "type": "string", "format": "uuid", "nullable": true },
+          "priceListId": { "type": "string", "format": "uuid", "nullable": true },
+          "notes": { "type": "string" },
+          "internalNotes": { "type": "string" },
+          "validUntil": { "type": "string", "format": "date-time", "nullable": true },
+          "orderId": { "type": "string", "format": "uuid", "nullable": true, "description": "Set after `POST /{id}/convert` succeeds." },
+          "lines": { "type": "array", "items": { "$ref": "#/components/schemas/QuotationLine" } },
+          "charges": { "type": "array", "items": { "$ref": "#/components/schemas/QuotationCharge" } },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "deletedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "PaginatedQuotations": { "allOf": [{ "$ref": "#/components/schemas/Pagination" }, { "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Quotation" } } } }] },
+      "CreateQuotationRequest": {
+        "type": "object",
+        "required": ["lines"],
+        "properties": {
+          "clientId": { "type": "string", "format": "uuid", "description": "Optional at quotation creation — quotations may start anonymous and get a client assigned later. Required before `POST /{id}/convert`." },
+          "clientName": { "type": "string", "maxLength": 255 },
+          "shippingAddressId": { "type": "string", "format": "uuid" },
+          "billingAddressId":  { "type": "string", "format": "uuid" },
+          "sellerId": { "type": "string", "format": "uuid" },
+          "priceListId": { "type": "string", "format": "uuid" },
+          "taxId": { "type": "string", "format": "uuid" },
+          "applyTaxBeforeDiscount": { "type": "boolean" },
+          "discountType": { "type": "string", "enum": ["NONE", "PERCENTAGE", "FIXED"] },
+          "discountValue": { "type": "number", "minimum": 0 },
+          "notes": { "type": "string", "maxLength": 2000 },
+          "internalNotes": { "type": "string", "maxLength": 10000 },
+          "validUntil": { "type": "string", "format": "date-time" },
+          "source": { "type": "string", "enum": ["web", "pos", "app", "catalog"] },
+          "lines": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/QuotationLineInput" } },
+          "charges": { "type": "array", "items": { "$ref": "#/components/schemas/QuotationChargeInput" } }
+        }
+      },
+      "UpdateQuotationRequest": {
+        "type": "object",
+        "required": ["lines"],
+        "properties": {
+          "clientId": { "type": "string", "format": "uuid" },
+          "clientName": { "type": "string", "maxLength": 255 },
+          "shippingAddressId": { "type": "string", "format": "uuid" },
+          "billingAddressId":  { "type": "string", "format": "uuid" },
+          "sellerId": { "type": "string", "format": "uuid" },
+          "priceListId": { "type": "string", "format": "uuid" },
+          "taxId": { "type": "string", "format": "uuid" },
+          "applyTaxBeforeDiscount": { "type": "boolean" },
+          "discountType": { "type": "string", "enum": ["NONE", "PERCENTAGE", "FIXED"] },
+          "discountValue": { "type": "number", "minimum": 0 },
+          "notes": { "type": "string", "maxLength": 2000 },
+          "internalNotes": { "type": "string", "maxLength": 10000, "nullable": true },
+          "validUntil": { "type": "string", "format": "date-time" },
+          "lines": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/QuotationLineInput" } },
+          "charges": { "type": "array", "items": { "$ref": "#/components/schemas/QuotationChargeInput" } }
+        }
+      },
+      "ChangeQuotationStatusRequest": {
+        "type": "object",
+        "required": ["status"],
+        "properties": { "status": { "type": "string", "enum": ["DRAFT", "CONFIRMED"] } }
+      },
 
       "OrderStatusEvent": {
         "type": "object",
