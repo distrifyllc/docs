@@ -49,6 +49,40 @@
         }
       }
     },
+    "/api/users/v1/staff/{id}/api-key": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "The staff user id whose API key is being managed. Must belong to the caller's organization." }],
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Generate (or rotate) API key",
+        "description": "Generates a new API key for the given **STAFF** user and returns the raw key **once**. Only the SHA-256 hash and the 8-char prefix are persisted — the raw value cannot be recovered after this response, so callers must show it to the user immediately and prompt them to store it securely.\n\nCalling this endpoint when a key already exists **rotates** it: the previous key is invalidated atomically and only the new one will authenticate going forward.\n\nThe resulting key inherits the staff user's organization scope and permissions. Use it via the `X-Api-Key` header on any subsequent request — see the [API keys guide](/guides/api-keys) for the full flow.",
+        "responses": {
+          "200": { "description": "API key generated. The `apiKey` field is the only place the raw key is returned.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenerateAPIKeyResponse" } } } },
+          "400": { "description": "The user exists but is not a `STAFF` user (clients cannot have API keys).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Get API key info",
+        "description": "Returns the masked prefix and creation timestamp of the staff user's current API key. The raw key is never included — this endpoint exists so a UI can show *\"key created on 2026-05-21 starting with `dst_a3b4…`\"* without exposing the full credential. Returns `null` when no key has been generated.",
+        "responses": {
+          "200": { "description": "Current API key info, or `null` when no key exists", "content": { "application/json": { "schema": { "oneOf": [{ "$ref": "#/components/schemas/APIKeyInfoResponse" }, { "type": "null" }] } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Authentication"],
+        "summary": "Revoke API key",
+        "description": "Clears the staff user's API key. After this call, any request that uses the previous key will be rejected with `401`. Use this when a key may have been leaked or when a staff member leaves the organization. Generating a new key with `POST` after revocation is fine — it will start fresh.",
+        "responses": {
+          "204": { "description": "API key revoked" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/api/organizations/v1/profile": {
       "get": {
         "tags": ["Organization"],
@@ -704,6 +738,10 @@
       "bearerAuth": {
         "type": "http", "scheme": "bearer", "bearerFormat": "JWT",
         "description": "Firebase ID token issued after sign-in. Send as `Authorization: Bearer <idToken>`. The token alone determines both the authenticated user and the organization the request is scoped to."
+      },
+      "apiKeyAuth": {
+        "type": "apiKey", "in": "header", "name": "X-Api-Key",
+        "description": "Long-lived API key bound to a `STAFF` user, prefixed `dst_`. Send as `X-Api-Key: dst_<32 chars>`. When present, takes precedence over the `Authorization` header — the key alone determines both the authenticated user and the organization scope (no need to set a default org or send a Firebase token). Generate one via `POST /api/users/v1/staff/{id}/api-key`; see the [API keys guide](/guides/api-keys)."
       }
     },
     "responses": {
@@ -719,6 +757,23 @@
       "OrgSummary": { "type": "object", "required": ["organizationId", "organizationName", "role", "isDefault", "userId"], "properties": { "organizationId": { "type": "string", "format": "uuid" }, "organizationName": { "type": "string" }, "role": { "type": "string", "enum": ["STAFF", "CLIENT", "ANONYMOUS"] }, "isDefault": { "type": "boolean" }, "userId": { "type": "string", "format": "uuid" } } },
       "AuthOrganizationsResponse": { "type": "object", "required": ["authId", "organizations", "needsSelection"], "properties": { "authId": { "type": "string" }, "organizations": { "type": "array", "items": { "$ref": "#/components/schemas/OrgSummary" } }, "needsSelection": { "type": "boolean" } } },
       "SetDefaultOrgRequest": { "type": "object", "required": ["organizationId"], "properties": { "organizationId": { "type": "string", "format": "uuid" } } },
+      "GenerateAPIKeyResponse": {
+        "type": "object",
+        "required": ["apiKey", "prefix", "createdAt"],
+        "properties": {
+          "apiKey": { "type": "string", "example": "dst_a3b4c5d6e7f8g9h0i1j2k3l4m5n6o7p8q9r0", "description": "The raw API key. Format: `dst_` + 32 alphanumeric chars. Returned **only** at generation time — store it immediately, it cannot be recovered." },
+          "prefix": { "type": "string", "example": "dst_a3b4c5d6", "description": "First 8 chars of the raw key, safe to display for identification (`dst_` + 8 chars)." },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "APIKeyInfoResponse": {
+        "type": "object",
+        "required": ["prefix", "createdAt"],
+        "properties": {
+          "prefix": { "type": "string", "example": "dst_a3b4c5d6", "description": "Masked prefix of the current key. The raw key is never returned by this endpoint." },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
 
       "Organization": {
         "type": "object",

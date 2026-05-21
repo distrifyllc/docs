@@ -1,0 +1,125 @@
+---
+title: "API keys"
+description: "How to generate a long-lived API key for a staff user and how to use it to call the API without going through Firebase"
+---
+
+## Overview
+
+Firebase tokens expire every hour. For server-to-server integrations, scheduled jobs, and CLI tools where running an OAuth refresh loop is impractical, Distrify supports a second authentication mode: **long-lived API keys**.
+
+An API key:
+
+- Belongs to one **STAFF** user. Client/anonymous users cannot have keys.
+- Inherits the staff user's role, organization and permissions — anything that staff member can do via the UI, the key can do via the API.
+- Replaces the Firebase token entirely. You do **not** also need an `Authorization: Bearer` header.
+- Is sent in the `X-Api-Key` request header and lives until you explicitly rotate or revoke it.
+
+<Warning>
+  A key is as powerful as the staff member it belongs to. Treat it like a password — never commit it to source control, never share it across services, and rotate it whenever it might have been exposed.
+</Warning>
+
+## How keys are stored
+
+Distrify only stores the **SHA-256 hash** of every API key plus an 8-character prefix for identification. The raw key is shown **once**, at generation time, in the response of `POST /staff/{id}/api-key`. After that, no one — not even Distrify support — can recover it. If you lose a key, the only path forward is to rotate it.
+
+Format: `dst_` followed by 32 alphanumeric characters (40 chars total).
+
+The 8-char prefix surfaced by `GET /staff/{id}/api-key` lets a UI display something like *"key created 2026-05-21 starting with `dst_a3b4c5d6…`"* without exposing the full credential.
+
+## Step 1 — Generate a key
+
+You authenticate this call the normal way (Firebase Bearer token of a staff member with `staff.edit` permission). The `:id` in the path is the staff user that the **new key will belong to** — typically that's the same user calling the endpoint, but admins can also mint keys for other staff in their org.
+
+<Card title="POST /api/users/v1/staff/{id}/api-key" icon="key" href="/api-reference/authentication/generate-api-key">
+  Returns `{ apiKey, prefix, createdAt }`. The `apiKey` field is the only place you will ever see the raw value.
+</Card>
+
+```http
+POST /api/users/v1/staff/8b1d…/api-key
+Authorization: Bearer <firebase-id-token>
+```
+
+Response:
+
+```json
+{
+  "apiKey":    "dst_a3b4c5d6e7f8g9h0i1j2k3l4m5n6o7p8q9r0",
+  "prefix":    "dst_a3b4c5d6",
+  "createdAt": "2026-05-21T18:42:11Z"
+}
+```
+
+Copy the `apiKey` into your secret store immediately. If you navigate away, you cannot get it back.
+
+<Note>
+  Calling the endpoint a second time **rotates** the key — the previous one is invalidated atomically and only the new value will authenticate going forward. There is no "list of keys"; each staff user has at most one key at a time.
+</Note>
+
+## Step 2 — Use the key
+
+Send it on any endpoint you would normally call with `Authorization: Bearer …`:
+
+```http
+GET /api/orders/v1
+X-Api-Key: dst_a3b4c5d6e7f8g9h0i1j2k3l4m5n6o7p8q9r0
+Accept: application/json
+```
+
+Notes on behavior:
+
+- The gateway treats `X-Api-Key` as taking **precedence** over `Authorization`. If both are sent, the key wins and the bearer token is ignored.
+- Organization scope is inherited from the staff user — you do **not** send `x-org-id`, and any client-supplied `x-org-id` is stripped by the gateway. The key authenticates *for the org it was created in*; to act in a different org, that staff member would need a separate key in that org.
+- Permissions are enforced exactly like for a Firebase-authenticated request. A staff key whose user does not have `orders.create` cannot create orders, even if the integration logic would otherwise allow it.
+- All standard response shapes (errors, pagination, CSV export, etc.) work identically.
+
+### Quick verification
+
+A minimal sanity check is calling the org profile endpoint — it returns the org the key is bound to:
+
+```bash
+curl -H "X-Api-Key: dst_a3b4c5d6e7f8g9h0i1j2k3l4m5n6o7p8q9r0" \
+     https://api.distrify.us/api/organizations/v1/profile
+```
+
+If the key is valid, you get `200` with the org payload. If it isn't, you get `401`.
+
+## Step 3 — Inspect the current key (optional)
+
+To show a "you have a key, created on X" panel in a settings UI without ever displaying the raw value:
+
+<Card title="GET /api/users/v1/staff/{id}/api-key" icon="circle-info" href="/api-reference/authentication/api-key-info">
+  Returns `{ prefix, createdAt }`, or `null` when no key exists.
+</Card>
+
+The raw key is never returned by this endpoint.
+
+## Step 4 — Revoke a key
+
+Whenever a key may have been exposed (committed by accident, sent over an insecure channel, staff member leaving), revoke it:
+
+<Card title="DELETE /api/users/v1/staff/{id}/api-key" icon="ban" href="/api-reference/authentication/revoke-api-key">
+  Returns `204`. Any subsequent request using the revoked key is rejected with `401`.
+</Card>
+
+Revocation is immediate and atomic. A new key can be generated right after with a fresh `POST` if needed.
+
+## Best practices
+
+- **One key per integration.** If you have a CFDI uploader, a stock sync, and a reporting job, give each one its own staff user and its own key. That way revoking one does not break the others, and audit logs can attribute every request to a specific integration.
+- **Rotate on a schedule.** A simple cron: monthly or quarterly, regenerate the key, push the new value to your secret manager, redeploy consumers. The old key dies the instant the new one is created.
+- **Never log the raw key.** Logging `prefix` is fine and helps diagnose which key was used; logging the full `apiKey` defeats the hashing-at-rest model.
+- **Use HTTPS only.** The key is a bearer credential — anyone who sees it on the wire can use it. The Distrify gateway only accepts TLS, so this is enforced for production, but make sure local tooling does not downgrade to plain HTTP.
+- **Prefer Firebase for end-user apps.** API keys are for backend integrations. If you are building a UI where a real user signs in, stick with Firebase — its short-lived tokens and refresh flow are safer for browser/mobile contexts.
+
+## Comparison: Firebase Bearer vs API key
+
+| Aspect | Firebase Bearer | API key |
+|---|---|---|
+| **Lifetime** | 1 hour, auto-refreshed by SDK | Until rotated or revoked |
+| **Header** | `Authorization: Bearer <token>` | `X-Api-Key: dst_<32>` |
+| **Best for** | End-user apps (web, mobile) | Server-to-server, jobs, CLIs |
+| **Org selection** | Default org or org picker | Bound to the org at creation time |
+| **Who can have one** | Any signed-in user | STAFF users only |
+| **Recovery if lost** | Sign in again | Rotate (raw value cannot be recovered) |
+| **Audit attribution** | `x-user-id` of the signed-in user | `x-user-id` of the staff the key belongs to |
+| **Precedence when both sent** | Used only when no `X-Api-Key` is present | Always wins |
