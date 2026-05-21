@@ -49,37 +49,37 @@
         }
       }
     },
-    "/api/users/v1/staff/{id}/api-key": {
-      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "The staff user id whose API key is being managed. Must belong to the caller's organization." }],
+    "/api/organizations/v1/staff/me/api-key": {
       "post": {
         "tags": ["Authentication"],
-        "summary": "Generate (or rotate) API key",
-        "description": "Generates a new API key for the given **STAFF** user and returns the raw key **once**. Only the SHA-256 hash and the 8-char prefix are persisted — the raw value cannot be recovered after this response, so callers must show it to the user immediately and prompt them to store it securely.\n\nCalling this endpoint when a key already exists **rotates** it: the previous key is invalidated atomically and only the new one will authenticate going forward.\n\nThe resulting key inherits the staff user's organization scope and permissions. Use it via the `X-Api-Key` header on any subsequent request — see the [API keys guide](/guides/api-keys) for the full flow.",
+        "summary": "Generate (or rotate) my API key",
+        "description": "Generates a new API key for the **calling staff member** and returns the raw key **once**. There is no `{id}` in the path — the staff record is derived from the Firebase token. Admins cannot generate keys for other staff; every staff member manages only their own credential.\n\nOnly the SHA-256 hash and the 8-char prefix are persisted — the raw value cannot be recovered after this response, so the UI must show it to the user immediately and prompt them to store it securely.\n\nCalling this endpoint when a key already exists **rotates** it: the previous key is invalidated atomically and only the new one will authenticate going forward.\n\nThe resulting key inherits the staff user's organization scope and permissions. Use it via the `X-Api-Key` header on any subsequent request — see the [API keys guide](/guides/api-keys) for the full flow.",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "200": { "description": "API key generated. The `apiKey` field is the only place the raw key is returned.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GenerateAPIKeyResponse" } } } },
-          "400": { "description": "The user exists but is not a `STAFF` user (clients cannot have API keys).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "400": { "description": "The caller is not a `STAFF` user (clients cannot have API keys).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "403": { "description": "The caller authenticated via `X-Api-Key`. Generating, rotating or revoking an API key requires a Firebase Bearer token to prevent privilege escalation from a leaked key.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       },
       "get": {
         "tags": ["Authentication"],
-        "summary": "Get API key info",
-        "description": "Returns the masked prefix and creation timestamp of the staff user's current API key. The raw key is never included — this endpoint exists so a UI can show *\"key created on 2026-05-21 starting with `dst_a3b4…`\"* without exposing the full credential. Returns `null` when no key has been generated.",
+        "summary": "Get my API key info",
+        "description": "Returns the masked prefix and creation timestamp of the calling staff member's current API key. The raw key is never included — this endpoint exists so a UI can show *\"key created on 2026-05-21 starting with `dst_a3b4…`\"* without exposing the full credential. Returns `null` when no key has been generated.\n\nUnlike `POST` and `DELETE`, this read-only endpoint works under both `bearerAuth` and `apiKeyAuth` — the caller may inspect their own key under either authentication mode.",
         "responses": {
           "200": { "description": "Current API key info, or `null` when no key exists", "content": { "application/json": { "schema": { "oneOf": [{ "$ref": "#/components/schemas/APIKeyInfoResponse" }, { "type": "null" }] } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "401": { "$ref": "#/components/responses/Unauthorized" }
         }
       },
       "delete": {
         "tags": ["Authentication"],
-        "summary": "Revoke API key",
-        "description": "Clears the staff user's API key. After this call, any request that uses the previous key will be rejected with `401`. Use this when a key may have been leaked or when a staff member leaves the organization. Generating a new key with `POST` after revocation is fine — it will start fresh.",
+        "summary": "Revoke my API key",
+        "description": "Clears the calling staff member's API key. After this call, any request that uses the previous key will be rejected with `401`. Use this when a key may have been leaked. Generating a new key with `POST` after revocation is fine — it will start fresh.",
+        "security": [{ "bearerAuth": [] }],
         "responses": {
           "204": { "description": "API key revoked" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
+          "403": { "description": "The caller authenticated via `X-Api-Key`. Revoking an API key requires a Firebase Bearer token.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
@@ -741,7 +741,7 @@
       },
       "apiKeyAuth": {
         "type": "apiKey", "in": "header", "name": "X-Api-Key",
-        "description": "Long-lived API key bound to a `STAFF` user, prefixed `dst_`. Send as `X-Api-Key: dst_<32 chars>`. When present, takes precedence over the `Authorization` header — the key alone determines both the authenticated user and the organization scope (no need to set a default org or send a Firebase token). Generate one via `POST /api/users/v1/staff/{id}/api-key`; see the [API keys guide](/guides/api-keys)."
+        "description": "Long-lived API key bound to a `STAFF` user, prefixed `dst_`. Send as `X-Api-Key: dst_<32 chars>`. When present, takes precedence over the `Authorization` header — the key alone determines both the authenticated user and the organization scope (no need to set a default org or send a Firebase token).\n\n**Key management endpoints (`POST` / `DELETE` on `/staff/me/api-key`) require Firebase Bearer auth and reject `X-Api-Key` with `403`.** This prevents a leaked key from minting or rotating itself. The read-only `GET /staff/me/api-key` works under both auth modes.\n\nGenerate a key via `POST /api/organizations/v1/staff/me/api-key`; see the [API keys guide](/guides/api-keys)."
       }
     },
     "responses": {

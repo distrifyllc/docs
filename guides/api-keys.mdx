@@ -1,6 +1,6 @@
 ---
 title: "API keys"
-description: "How to generate a long-lived API key for a staff user and how to use it to call the API without going through Firebase"
+description: "How to generate a long-lived API key for yourself and use it to call the API without going through Firebase"
 ---
 
 ## Overview
@@ -9,33 +9,37 @@ Firebase tokens expire every hour. For server-to-server integrations, scheduled 
 
 An API key:
 
-- Belongs to one **STAFF** user. Client/anonymous users cannot have keys.
+- Belongs to **one specific STAFF user — the caller**. There is no way to mint a key for someone else. Admins do not have a "create key for another user" path; every staff member manages only their own credential. Client/anonymous users cannot have keys at all.
 - Inherits the staff user's role, organization and permissions — anything that staff member can do via the UI, the key can do via the API.
-- Replaces the Firebase token entirely. You do **not** also need an `Authorization: Bearer` header.
+- Replaces the Firebase token entirely. You do **not** also need an `Authorization: Bearer` header on subsequent requests.
 - Is sent in the `X-Api-Key` request header and lives until you explicitly rotate or revoke it.
 
 <Warning>
   A key is as powerful as the staff member it belongs to. Treat it like a password — never commit it to source control, never share it across services, and rotate it whenever it might have been exposed.
 </Warning>
 
+<Note>
+  **Generating, rotating and revoking an API key requires Firebase Bearer auth.** A request authenticated via `X-Api-Key` is rejected with `403` on those operations — this prevents a leaked key from being used to mint a fresh key or revoke audit trails. The read-only `GET` works under both auth modes.
+</Note>
+
 ## How keys are stored
 
-Distrify only stores the **SHA-256 hash** of every API key plus an 8-character prefix for identification. The raw key is shown **once**, at generation time, in the response of `POST /staff/{id}/api-key`. After that, no one — not even Distrify support — can recover it. If you lose a key, the only path forward is to rotate it.
+Distrify only stores the **SHA-256 hash** of every API key plus an 8-character prefix for identification. The raw key is shown **once**, in the response of `POST /staff/me/api-key`. After that, no one — not even Distrify support — can recover it. If you lose a key, the only path forward is to rotate it.
 
-Format: `dst_` followed by 32 alphanumeric characters (40 chars total).
+Format: `dst_` followed by 32 alphanumeric characters (36 chars total).
 
-The 8-char prefix surfaced by `GET /staff/{id}/api-key` lets a UI display something like *"key created 2026-05-21 starting with `dst_a3b4c5d6…`"* without exposing the full credential.
+The 8-char prefix surfaced by `GET /staff/me/api-key` lets a UI display something like *"key created 2026-05-21 starting with `dst_a3b4c5d6…`"* without exposing the full credential.
 
 ## Step 1 — Generate a key
 
-You authenticate this call the normal way (Firebase Bearer token of a staff member with `staff.edit` permission). The `:id` in the path is the staff user that the **new key will belong to** — typically that's the same user calling the endpoint, but admins can also mint keys for other staff in their org.
+Sign in with Firebase as the staff member who will own the key, then call:
 
-<Card title="POST /api/users/v1/staff/{id}/api-key" icon="key" href="/api-reference/authentication/generate-api-key">
+<Card title="POST /api/organizations/v1/staff/me/api-key" icon="key" href="/api-reference/authentication/generate-api-key">
   Returns `{ apiKey, prefix, createdAt }`. The `apiKey` field is the only place you will ever see the raw value.
 </Card>
 
 ```http
-POST /api/users/v1/staff/8b1d…/api-key
+POST /api/organizations/v1/staff/me/api-key
 Authorization: Bearer <firebase-id-token>
 ```
 
@@ -70,6 +74,7 @@ Notes on behavior:
 - The gateway treats `X-Api-Key` as taking **precedence** over `Authorization`. If both are sent, the key wins and the bearer token is ignored.
 - Organization scope is inherited from the staff user — you do **not** send `x-org-id`, and any client-supplied `x-org-id` is stripped by the gateway. The key authenticates *for the org it was created in*; to act in a different org, that staff member would need a separate key in that org.
 - Permissions are enforced exactly like for a Firebase-authenticated request. A staff key whose user does not have `orders.create` cannot create orders, even if the integration logic would otherwise allow it.
+- **The key cannot manage itself.** Calling `POST` or `DELETE` on `/staff/me/api-key` with `X-Api-Key` is rejected with `403`. To rotate or revoke, sign in again with Firebase. (Reading info via `GET` is allowed.)
 - All standard response shapes (errors, pagination, CSV export, etc.) work identically.
 
 ### Quick verification
@@ -87,25 +92,27 @@ If the key is valid, you get `200` with the org payload. If it isn't, you get `4
 
 To show a "you have a key, created on X" panel in a settings UI without ever displaying the raw value:
 
-<Card title="GET /api/users/v1/staff/{id}/api-key" icon="circle-info" href="/api-reference/authentication/api-key-info">
+<Card title="GET /api/organizations/v1/staff/me/api-key" icon="circle-info" href="/api-reference/authentication/api-key-info">
   Returns `{ prefix, createdAt }`, or `null` when no key exists.
 </Card>
 
-The raw key is never returned by this endpoint.
+The raw key is never returned by this endpoint. This endpoint accepts both Firebase Bearer and `X-Api-Key` — the staff member may always inspect their own key, regardless of how they authenticated.
 
 ## Step 4 — Revoke a key
 
-Whenever a key may have been exposed (committed by accident, sent over an insecure channel, staff member leaving), revoke it:
+Whenever a key may have been exposed (committed by accident, sent over an insecure channel, suspected leak), revoke it. Sign in with Firebase first — `X-Api-Key` is not accepted on this endpoint.
 
-<Card title="DELETE /api/users/v1/staff/{id}/api-key" icon="ban" href="/api-reference/authentication/revoke-api-key">
+<Card title="DELETE /api/organizations/v1/staff/me/api-key" icon="ban" href="/api-reference/authentication/revoke-api-key">
   Returns `204`. Any subsequent request using the revoked key is rejected with `401`.
 </Card>
 
 Revocation is immediate and atomic. A new key can be generated right after with a fresh `POST` if needed.
 
+If a staff member leaves the organization, the standard staff de-activation flow handles their access — there is no separate "revoke their key" path, since admins cannot touch other people's keys. De-activating the staff user blocks all of their authentication, including the API key.
+
 ## Best practices
 
-- **One key per integration.** If you have a CFDI uploader, a stock sync, and a reporting job, give each one its own staff user and its own key. That way revoking one does not break the others, and audit logs can attribute every request to a specific integration.
+- **One key per integration.** If you have a CFDI uploader, a stock sync, and a reporting job, give each one its own staff user and let that user mint its own key. That way revoking one does not break the others, and audit logs can attribute every request to a specific integration.
 - **Rotate on a schedule.** A simple cron: monthly or quarterly, regenerate the key, push the new value to your secret manager, redeploy consumers. The old key dies the instant the new one is created.
 - **Never log the raw key.** Logging `prefix` is fine and helps diagnose which key was used; logging the full `apiKey` defeats the hashing-at-rest model.
 - **Use HTTPS only.** The key is a bearer credential — anyone who sees it on the wire can use it. The Distrify gateway only accepts TLS, so this is enforced for production, but make sure local tooling does not downgrade to plain HTTP.
@@ -119,7 +126,9 @@ Revocation is immediate and atomic. A new key can be generated right after with 
 | **Header** | `Authorization: Bearer <token>` | `X-Api-Key: dst_<32>` |
 | **Best for** | End-user apps (web, mobile) | Server-to-server, jobs, CLIs |
 | **Org selection** | Default org or org picker | Bound to the org at creation time |
-| **Who can have one** | Any signed-in user | STAFF users only |
-| **Recovery if lost** | Sign in again | Rotate (raw value cannot be recovered) |
+| **Who can have one** | Any signed-in user | STAFF users only, self-issued |
+| **Can manage another user's credential** | n/a | **No** — endpoint always targets the caller |
+| **Recovery if lost** | Sign in again | Rotate via Firebase (raw value cannot be recovered) |
+| **Can mint or rotate keys** | Yes | **No** — must re-auth with Firebase first |
 | **Audit attribution** | `x-user-id` of the signed-in user | `x-user-id` of the staff the key belongs to |
 | **Precedence when both sent** | Used only when no `X-Api-Key` is present | Always wins |
