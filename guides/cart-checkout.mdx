@@ -180,7 +180,7 @@ Render the success state directly from this payload — no extra GET required.
 | Payment terms | [`GET /api/orders/v1/payment-terms`](/api-reference/orders/payment-terms) | `PaymentTermDTO` |
 | Open credit memos | [`GET /api/orders/v1/credit-memos?clientId=...`](/api-reference/orders/credit-memos) | `CreditMemoDTO` |
 | Client addresses | [`GET /api/clients/v1/{clientId}/addresses`](/api-reference/clients/addresses) | `ClientAddressDTO` |
-| Save draft / confirm order | [[`POST /api/orders/v1`](/api-reference/orders/create)](/api-reference/orders/create) | `CreateOrderRequest` → `OrderDTO` |
+| Save draft / confirm order | [`POST /api/orders/v1`](/api-reference/orders/create) | `CreateOrderRequest` → `OrderDTO` |
 | Mark as invoiced after | [`PATCH /api/orders/v1/{id}/invoice`](/api-reference/orders/mark-invoiced) | `OrderDTO` |
 | Extra payment after | [`POST /api/orders/v1/payments`](/api-reference/orders/create-payment) | `PaymentDTO` |
 | Invoice PDF | [`GET /api/orders/v1/{id}/invoice/pdf`](/api-reference/orders/invoice-pdf) | `application/pdf` |
