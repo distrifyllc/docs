@@ -153,9 +153,9 @@ Each returns the updated `OrderDTO`. Refresh the timeline from the response.
 
 | UI element | Method · Path | DTO |
 |---|---|---|
-| Orders list | [[`GET /api/search/v1/orders`](/api-reference/search/orders)](/api-reference/search/orders) | `PaginatedResponse<OrderDTO>` |
-| Status / payment counts | [[`GET /api/search/v1/orders/counts`](/api-reference/search/order-counts)](/api-reference/search/order-counts) | `OrderCountsResponse` |
-| Sales rep dropdown | [[`GET /api/organizations/v1/staff`](/api-reference/staff/list)](/api-reference/staff/list) | `PaginatedResponse<StaffDTO>` |
+| Orders list | [`GET /api/search/v1/orders`](/api-reference/search/orders) | `PaginatedResponse<OrderDTO>` |
+| Status / payment counts | [`GET /api/search/v1/orders/counts`](/api-reference/search/order-counts) | `OrderCountsResponse` |
+| Sales rep dropdown | [`GET /api/organizations/v1/staff`](/api-reference/staff/list) | `PaginatedResponse<StaffDTO>` |
 | Delivery statuses (timeline scaffold) | [`GET /api/orders/v1/delivery-statuses`](/api-reference/orders/delivery-statuses) | `DeliveryStatusDTO[]` |
 | Order timeline (SEGUIMIENTO) | [`GET /api/orders/v1/{id}/timeline`](/api-reference/orders/timeline) | `OrderStatusEvent[]` |
 | Order detail | [`GET /api/orders/v1/{id}`](/api-reference/orders/get) | `OrderDTO` |
