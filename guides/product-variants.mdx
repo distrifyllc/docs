@@ -1,0 +1,256 @@
+---
+title: "Product variants"
+description: "Group products that differ only by colour, flavour or size — each with its own UPC and stock — without changing how orders, inventory or pricing work"
+---
+
+## Overview
+
+A **product group** bundles products that are the same style and differ only along one or more
+attribute axes: one hat in Mustard and Turquoise, each in L and XL. Distrify models this with a
+deliberate constraint:
+
+<Note>
+  **A variant *is* a product.** The group only stores the axes and which product sits in which
+  combination. Every variant is a normal row in your catalogue with its own id, SKU, UPCs, images
+  and stock — so orders, quotations, POS, inventory documents, price lists, PDFs and reports keep
+  working exactly as they did, with no variant-specific handling anywhere.
+</Note>
+
+That is why enabling variants cannot break an existing integration: the group is additive metadata,
+never a new unit of sale.
+
+## Turning it on
+
+Variants are **opt-in per organization** and off by default. While the flag is off, every group
+endpoint answers `403` and no product carries a `group` block, so the API is byte-for-byte what it
+was before.
+
+```json Update organization
+PUT /api/organizations/v1/{id}
+{ "name": "Acme Hats", "variantsEnabled": true }
+```
+
+<Warning>
+  The product service caches the flag in memory for 60 seconds, so a toggle can take up to one
+  minute to be visible on the group endpoints. This is configurable with the
+  `VARIANTS_FLAG_TTL_SECONDS` environment variable and the cache fails closed: if the organization
+  service is unreachable, variants stay disabled rather than accidentally enabled.
+</Warning>
+
+## The model
+
+| Concept | What it is | Where it lives |
+| --- | --- | --- |
+| Group | The style: name, SKU prefix, brand, price, cost | `ProductGroup` |
+| Axis | A dimension of variation — Color, Size, Flavor. The first axis is the primary one | `ProductGroupAttribute` |
+| Value | A possible value of an axis — Mustard, L | `ProductGroupAttributeValue` |
+| Variant | A product placed at exactly one combination of values | A row in `products` + a membership |
+
+Two rules the database enforces for you:
+
+- **One group per product.** Attaching a product that already belongs to a group answers `409`.
+- **One variant per combination.** Two variants of the same group cannot share the same set of
+  attribute values; the second attempt answers `409`.
+
+### Pricing
+
+Price and cost are set **on the group** and copied to the member products, because pricing lives on
+the product everywhere else in Distrify. Editing the group alone does not move any product price —
+you have to ask for it:
+
+```json Propagate pricing
+PUT /api/products/v1/groups/{groupId}
+{ "price": 19.99, "cost": 9.5, "propagatePricing": true }
+```
+
+Editing a single variant's price directly is still allowed; the group does not lock it. Price lists
+continue to work per product, so a variant can carry its own list prices.
+
+### UPCs
+
+Each variant has its own `upcs` array, and **UPCs may repeat across variants** of the same group —
+that is a supported case, not a validation error.
+
+## Walkthrough
+
+<Steps>
+  <Step title="Create the group with its axes">
+    Axes are ordered: the first one is the primary axis, which clients typically render as rows.
+
+    ```json
+    POST /api/products/v1/groups
+    {
+      "name": "I GOT TIME",
+      "skuPrefix": "5121",
+      "price": 12.5,
+      "cost": 6,
+      "attributes": [
+        { "name": "Color", "position": 0, "values": ["Mustard", "Turquoise"] },
+        { "name": "Size",  "position": 1, "values": ["L", "XL"] }
+      ]
+    }
+    ```
+
+    No products exist yet — a group with axes is just a plan.
+  </Step>
+
+  <Step title="Preview the combinations">
+    A dry run returns the full cartesian product with a suggested SKU and name per combination and
+    flags the ones that already exist, so you can let a user edit them first.
+
+    ```bash
+    POST /api/products/v1/groups/{groupId}/variants/generate?preview=true
+    ```
+
+    ```json Response
+    {
+      "combinations": [
+        {
+          "attributeValueIds": ["…mustard", "…l"],
+          "attributes": [
+            { "name": "Color", "value": "Mustard" },
+            { "name": "Size", "value": "L" }
+          ],
+          "suggestedSku": "5121-MUS-L",
+          "suggestedName": "I GOT TIME Mustard L",
+          "exists": false
+        }
+      ],
+      "totalCombinations": 4,
+      "truncated": false
+    }
+    ```
+
+    The preview is capped at 500 combinations; when `truncated` is `true`, generate the ones you got
+    and ask again.
+  </Step>
+
+  <Step title="Generate the variants">
+    An empty body generates every missing combination. Pass `combinations` to create a specific
+    subset, with your own SKU, name or UPCs.
+
+    ```json
+    POST /api/products/v1/groups/{groupId}/variants/generate
+    {
+      "combinations": [
+        {
+          "attributeValueIds": ["…mustard", "…l"],
+          "sku": "HAT-MUS-L",
+          "upcs": ["0001112223334"]
+        }
+      ]
+    }
+    ```
+
+    The batch is transactional: if one combination is invalid, no products are created.
+  </Step>
+
+  <Step title="Or attach products you already have">
+    Catalogues built before variants existed can be grouped in place. The product keeps its price;
+    attaching never rewrites it.
+
+    ```json
+    POST /api/products/v1/groups/{groupId}/variants
+    { "productId": "…", "attributeValueIds": ["…mustard", "…xl"] }
+    ```
+  </Step>
+
+  <Step title="Read the group back">
+    `GET /api/products/v1/groups/{groupId}?includeStock=true` returns the axes and the variants, each
+    with `onHandQty` summed across warehouses — enough to render a matrix.
+  </Step>
+</Steps>
+
+## Finding variants
+
+Products that belong to a group carry an extra `group` block in every product response **and** in
+the search index:
+
+```json
+"group": {
+  "groupId": "…",
+  "groupName": "I GOT TIME",
+  "attributes": [
+    { "name": "Color", "value": "Mustard" },
+    { "name": "Size", "value": "L" }
+  ],
+  "variantLabel": "Mustard L"
+}
+```
+
+Free-text product search matches the group name and the variant label, so `I GOT TIME turquoise`
+finds the right row. Attribute values are also matched exactly and case-insensitively, which is what
+makes a single-character size such as `L` findable — the autocomplete analyser alone would drop it.
+
+To list one group's variants, filter instead of searching:
+
+```bash
+GET /api/search/v1/products?groupId={groupId}
+```
+
+<Note>
+  Search is fed asynchronously from product events, so a freshly generated variant appears in the
+  index a moment after the API returns it. Read-after-write against the search endpoints should
+  poll rather than assume.
+</Note>
+
+## Bulk loading
+
+Both bulk paths accept two extra columns, and they only appear for organizations with variants
+enabled:
+
+| Column | Meaning |
+| --- | --- |
+| `Variant Group` | Group name. Created if it does not exist. |
+| `Variant Attributes` | `Color=Mustard; Size=L` — axis order defines axis positions |
+
+- **Paste grid** — `POST /api/products/v1/bulk` takes `variant_group` and `variant_attributes` per row.
+- **Excel import** — the generated template carries the two columns, and the export fills them, so
+  export → edit in Excel → re-import keeps the grouping. This is the practical way to load
+  4 colours × 5 sizes.
+
+Both funnel into the same idempotent upsert: group matched by name (case-insensitive), axes and
+values created on first sight, membership keyed by the combination. **Re-importing the same file
+does not duplicate anything.** A malformed `Variant Attributes` cell is reported as a row warning —
+the product is still created, just not grouped.
+
+## Permissions
+
+The feature reuses the existing product permissions; there is nothing new to grant.
+
+| Action | Permission |
+| --- | --- |
+| List and read groups | `products.list` |
+| Create a group, generate variants | `products.create` |
+| Edit a group, axes, values, attach/detach variants | `products.edit` |
+| Delete a group | `products.delete` |
+
+## Deleting
+
+Deleting a group removes the grouping, never the goods:
+
+<Warning>
+  `DELETE /api/products/v1/groups/{groupId}` soft-deletes the group and drops the membership rows.
+  The variant products stay in the catalogue with their SKU, UPCs, stock and full order history.
+  The same is true of `DELETE …/variants/{productId}`, which only detaches one product.
+</Warning>
+
+Turning the tenant flag back off is equally non-destructive: the groups remain in the database, the
+products keep working, and re-enabling restores the administration exactly as it was.
+
+## Reference
+
+<CardGroup cols={2}>
+  <Card title="Create product group" icon="layer-group" href="/api-reference/product-groups/create-group">
+    Group plus its axes in one call
+  </Card>
+  <Card title="Generate variants" icon="wand-magic-sparkles" href="/api-reference/product-groups/generate-variants">
+    Preview and create the combinations
+  </Card>
+  <Card title="Attach existing product" icon="link" href="/api-reference/product-groups/attach-variant">
+    Group a catalogue that was built flat
+  </Card>
+  <Card title="Update product group" icon="tag" href="/api-reference/product-groups/update-group">
+    Rename, re-price and propagate
+  </Card>
+</CardGroup>

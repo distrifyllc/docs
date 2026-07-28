@@ -32,7 +32,8 @@
           {
             "group": "Sales flows",
             "pages": [
-              "guides/quotations"
+              "guides/quotations",
+              "guides/product-variants"
             ]
           }
         ]
@@ -148,6 +149,25 @@
               "api-reference/products/get-unit-of-measure",
               "api-reference/products/update-unit-of-measure",
               "api-reference/products/delete-unit-of-measure"
+            ]
+          },
+          {
+            "group": "Product Groups",
+            "pages": [
+              "api-reference/product-groups/list-groups",
+              "api-reference/product-groups/create-group",
+              "api-reference/product-groups/get-group",
+              "api-reference/product-groups/update-group",
+              "api-reference/product-groups/delete-group",
+              "api-reference/product-groups/add-attribute",
+              "api-reference/product-groups/update-attribute",
+              "api-reference/product-groups/delete-attribute",
+              "api-reference/product-groups/add-attribute-value",
+              "api-reference/product-groups/delete-attribute-value",
+              "api-reference/product-groups/generate-variants",
+              "api-reference/product-groups/attach-variant",
+              "api-reference/product-groups/update-variant",
+              "api-reference/product-groups/detach-variant"
             ]
           },
           {

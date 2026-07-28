@@ -38,6 +38,10 @@
       "description": "Products, brands, categories, media, prices and UOMs"
     },
     {
+      "name": "Product Groups",
+      "description": "Variants of a product style along attribute axes (Color, Size, Flavor…). Every variant is a normal product, so ordering, inventory and pricing keep working unchanged. Requires the tenant flag organizations.variantsEnabled."
+    },
+    {
       "name": "Inventory",
       "description": "Warehouses, stock and lots"
     },
@@ -2637,6 +2641,15 @@
               "type": "integer",
               "default": 20
             }
+          },
+          {
+            "name": "groupId",
+            "in": "query",
+            "description": "Restrict results to the variants of one product group (DIS-889).",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -3592,6 +3605,7 @@
           "Organization"
         ],
         "summary": "Update organization",
+        "description": "The body accepts `variantsEnabled` to opt the organization into the product variants (groups) model. It is false by default; while it is false the group endpoints answer 403 and products behave exactly as before. The product service caches the flag for 60 seconds. See [Product variants](/guides/product-variants).",
         "parameters": [
           {
             "name": "id",
@@ -5446,6 +5460,7 @@
           "Products"
         ],
         "summary": "Download template",
+        "description": "For organizations with variants enabled the template carries two extra columns, `Variant Group` and `Variant Attributes` (`Color=Mustard; Size=L`), and the export fills them — so export → edit in Excel → re-import preserves the grouping. See [Product variants](/guides/product-variants).",
         "responses": {
           "200": {
             "description": "Successful response"
@@ -5462,6 +5477,7 @@
           "Products"
         ],
         "summary": "Import products",
+        "description": "Rows may carry the `Variant Group` and `Variant Attributes` columns to place the product in a variant group; the upsert is idempotent, so re-importing the same file does not duplicate anything. See [Product variants](/guides/product-variants).",
         "responses": {
           "201": {
             "description": "Success"
@@ -5481,6 +5497,7 @@
           "Products"
         ],
         "summary": "Upload import async",
+        "description": "Rows may carry the `Variant Group` and `Variant Attributes` columns to place the product in a variant group; the upsert is idempotent, so re-importing the same file does not duplicate anything. See [Product variants](/guides/product-variants).",
         "responses": {
           "201": {
             "description": "Success"
@@ -5566,6 +5583,7 @@
           "Products"
         ],
         "summary": "Bulk create",
+        "description": "**Variant columns (organizations with variants enabled).** Each item also accepts `variant_group` (the group name, created when it does not exist) and `variant_attributes` in the form `Color=Mustard; Size=L`, where the order of the pairs defines the axis order. The upsert is idempotent — re-sending the same rows does not duplicate groups, axes, values or memberships. A malformed `variant_attributes` value is reported as a row warning and the product is still created, just not grouped. See [Product variants](/guides/product-variants).",
         "responses": {
           "201": {
             "description": "Success"
@@ -13768,6 +13786,765 @@
           }
         }
       }
+    },
+    "/api/products/v1/groups": {
+      "post": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Create product group",
+        "description": "Creates a group and, optionally, its variation axes and their values in one call. The axes are ordered: the first one is the primary axis. Creating a group does not create any product — use Generate variants for that.\n\nRequires the `products.create` permission.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductGroupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "List product groups",
+        "description": "Paginated list of groups with their variant counts. Variants themselves are omitted — fetch a single group to get them.\n\nRequires the `products.list` permission.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Case-insensitive search on the group name.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedProductGroups"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          }
+        }
+      }
+    },
+    "/api/products/v1/groups/{groupId}": {
+      "get": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Get product group",
+        "description": "Returns the group with its axes (ordered by position, values ordered too) and its variants.\n\nRequires the `products.list` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "includeStock",
+            "in": "query",
+            "description": "When `true`, each variant carries `onHandQty` summed across warehouses.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductGroup"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Update product group",
+        "description": "Updates the group's own fields. Set `propagatePricing: true` to also write the group's price and cost onto every member product — pricing lives on the product, so this is the only way a group edit reaches the variants.\n\nRequires the `products.edit` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProductGroupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Delete product group",
+        "description": "Soft-deletes the group and removes the membership rows. **The variant products are never deleted** — they stay in the catalog as ordinary products, keeping their SKU, UPCs, stock and history.\n\nRequires the `products.delete` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/products/v1/groups/{groupId}/attributes": {
+      "post": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Add variation axis",
+        "description": "Adds an axis (and optionally its values) to an existing group. Adding an axis to a group that already has variants leaves those variants without a value on the new axis until each one is updated.\n\nRequires the `products.edit` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddProductGroupAttributeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/products/v1/groups/{groupId}/attributes/{attributeId}": {
+      "put": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Update variation axis",
+        "description": "Renames or reorders an axis. Axis names are unique per group, case-insensitively.\n\nRequires the `products.edit` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "attributeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProductGroupAttributeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Delete variation axis",
+        "description": "Removes an axis and its values. Answers 409 when any variant still uses one of those values.\n\nRequires the `products.edit` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "attributeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/products/v1/groups/{groupId}/attributes/{attributeId}/values": {
+      "post": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Add axis value",
+        "description": "Adds a possible value to an axis, e.g. another colour. Values are unique per axis, case-insensitively.\n\nRequires the `products.edit` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "attributeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddProductGroupAttributeValueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/products/v1/groups/{groupId}/attributes/{attributeId}/values/{valueId}": {
+      "delete": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Delete axis value",
+        "description": "Removes a value from an axis. Answers 409 when a variant is using it.\n\nRequires the `products.edit` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "attributeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "valueId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/products/v1/groups/{groupId}/variants/generate": {
+      "post": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Generate variants",
+        "description": "Creates one product per requested combination, inheriting the group's price, cost, brand and active flag. Send an empty body to generate every missing combination.\n\nWith `?preview=true` nothing is written: the response lists the combinations with a suggested SKU and name and flags the ones that already exist, so a client can let the user edit them before committing.\n\nThe whole batch runs in a single transaction — one rejected combination creates no products at all.\n\nRequires the `products.create` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "preview",
+            "in": "query",
+            "description": "Set to `true` for a dry run that returns the suggested combinations without creating anything.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateVariantsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview (only when preview=true)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateVariantsPreview"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Variants created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/products/v1/groups/{groupId}/variants": {
+      "post": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Attach existing product as variant",
+        "description": "Links a product that already exists to the group. Useful for catalogues that were built flat before variants were enabled. The product keeps its own price — attaching never rewrites it. Answers 409 when the product already belongs to a group or when the combination is taken.\n\nRequires the `products.edit` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachVariantRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Attached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/products/v1/groups/{groupId}/variants/{productId}": {
+      "put": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Update variant attribute values",
+        "description": "Moves a variant to a different combination. Answers 409 when the target combination already exists.\n\nRequires the `products.edit` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "productId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateVariantRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Product Groups"
+        ],
+        "summary": "Detach variant",
+        "description": "Unlinks a variant from its group. **The product survives** as an ordinary product with its stock and history; only the membership disappears.\n\nRequires the `products.edit` permission.",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "productId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detached"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VariantsDisabled"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -13818,6 +14595,16 @@
       },
       "ValidationError": {
         "description": "Validation failed. Message is localized via `Accept-Language`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "VariantsDisabled": {
+        "description": "Product variants are not enabled for this organization. Turn on Product Variants in Settings (organizations.variantsEnabled) first.",
         "content": {
           "application/json": {
             "schema": {
@@ -14081,6 +14868,10 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "variantsEnabled": {
+            "type": "boolean",
+            "description": "Opts the organization into the product variants (groups) model. False by default; while it is false the group endpoints answer 403 and products behave exactly as before."
           }
         }
       },
@@ -14586,6 +15377,9 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "group": {
+            "$ref": "#/components/schemas/ProductGroupBlock"
           }
         }
       },
@@ -17017,6 +17811,570 @@
           },
           "thisWeekCount": {
             "type": "integer"
+          }
+        }
+      },
+      "ProductVariantAttribute": {
+        "type": "object",
+        "description": "One attribute name/value pair of a variant.",
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Color"
+          },
+          "value": {
+            "type": "string",
+            "example": "Mustard"
+          }
+        }
+      },
+      "ProductGroupBlock": {
+        "type": "object",
+        "description": "Variant-group block carried by a product. Present only when the product belongs to a group, so it is absent for every product of an organization that has not enabled variants.",
+        "required": [
+          "groupId",
+          "groupName"
+        ],
+        "properties": {
+          "groupId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "groupName": {
+            "type": "string",
+            "example": "I GOT TIME"
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductVariantAttribute"
+            }
+          },
+          "variantLabel": {
+            "type": "string",
+            "description": "Attribute values joined by a space; this is the field free-text search matches.",
+            "example": "Mustard L"
+          }
+        }
+      },
+      "ProductGroupAttributeValue": {
+        "type": "object",
+        "required": [
+          "id",
+          "value",
+          "position"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "value": {
+            "type": "string",
+            "example": "Mustard"
+          },
+          "position": {
+            "type": "integer",
+            "description": "Display order within the axis."
+          }
+        }
+      },
+      "ProductGroupAttribute": {
+        "type": "object",
+        "description": "A variation axis of the group. Position 0 is the primary axis.",
+        "required": [
+          "id",
+          "name",
+          "position",
+          "values"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "Color"
+          },
+          "position": {
+            "type": "integer"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductGroupAttributeValue"
+            }
+          }
+        }
+      },
+      "ProductGroupVariant": {
+        "type": "object",
+        "description": "One variant of the group. Every variant is a full product, so `productId` works anywhere a product id is accepted (orders, quotations, inventory, price lists).",
+        "required": [
+          "productId",
+          "name",
+          "sku",
+          "upcs",
+          "price",
+          "cost",
+          "isActive",
+          "position",
+          "attributes"
+        ],
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "I GOT TIME Mustard L"
+          },
+          "sku": {
+            "type": "string",
+            "example": "5121-MUS-L"
+          },
+          "upcs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "UPCs are per variant and MAY repeat across variants of the same group."
+          },
+          "price": {
+            "type": "number"
+          },
+          "cost": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "position": {
+            "type": "integer"
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductVariantAttribute"
+            }
+          },
+          "onHandQty": {
+            "type": "number",
+            "description": "Stock summed across warehouses. Only returned when the request passes includeStock=true."
+          }
+        }
+      },
+      "ProductGroup": {
+        "type": "object",
+        "description": "A group bundles products that share a style and pricing and differ only along the attribute axes. Price and cost live on the group and are copied to the member products; each variant keeps its own SKU, UPCs, images and stock.",
+        "required": [
+          "id",
+          "organizationId",
+          "name",
+          "price",
+          "cost",
+          "isActive",
+          "variantCount",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "I GOT TIME"
+          },
+          "description": {
+            "type": "string"
+          },
+          "skuPrefix": {
+            "type": "string",
+            "description": "Base for suggested variant SKUs: prefix 5121 suggests 5121-MUS-L.",
+            "example": "5121"
+          },
+          "brandId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "price": {
+            "type": "number",
+            "example": 12.5
+          },
+          "cost": {
+            "type": "number",
+            "example": 6
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "variantCount": {
+            "type": "integer",
+            "description": "Number of member products."
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductGroupAttribute"
+            }
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductGroupVariant"
+            },
+            "description": "Returned by the detail endpoint; omitted from list responses."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deletedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PaginatedProductGroups": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductGroup"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          }
+        }
+      },
+      "CreateProductGroupAttributeRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Color"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Axis order. Defaults to the position in the array."
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "example": [
+              "Mustard",
+              "Turquoise"
+            ]
+          }
+        }
+      },
+      "CreateProductGroupRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "example": "I GOT TIME"
+          },
+          "description": {
+            "type": "string"
+          },
+          "skuPrefix": {
+            "type": "string",
+            "maxLength": 50,
+            "example": "5121"
+          },
+          "brandId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0,
+            "example": 12.5
+          },
+          "cost": {
+            "type": "number",
+            "minimum": 0,
+            "example": 6
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateProductGroupAttributeRequest"
+            }
+          }
+        }
+      },
+      "UpdateProductGroupRequest": {
+        "type": "object",
+        "description": "Every field is optional; omitted fields keep their current value.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "description": {
+            "type": "string"
+          },
+          "skuPrefix": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "brandId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0
+          },
+          "cost": {
+            "type": "number",
+            "minimum": 0
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "propagatePricing": {
+            "type": "boolean",
+            "description": "When true the group price and cost are written to every member product in one transaction. Leave it false to edit the group without touching the products."
+          }
+        }
+      },
+      "AddProductGroupAttributeRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Color"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Axis order. Defaults to the position in the array."
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "example": [
+              "Mustard",
+              "Turquoise"
+            ]
+          }
+        }
+      },
+      "UpdateProductGroupAttributeRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AddProductGroupAttributeValueRequest": {
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Mustard"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "VariantCombinationRequest": {
+        "type": "object",
+        "description": "One variant to create. attributeValueIds must contain exactly one value per axis of the group.",
+        "required": [
+          "attributeValueIds"
+        ],
+        "properties": {
+          "attributeValueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "sku": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Defaults to the suggested SKU when omitted."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "Defaults to the suggested name when omitted."
+          },
+          "upcs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "GenerateVariantsRequest": {
+        "type": "object",
+        "description": "Leave combinations empty to generate every combination that does not exist yet.",
+        "properties": {
+          "combinations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariantCombinationRequest"
+            }
+          }
+        }
+      },
+      "VariantCombinationPreview": {
+        "type": "object",
+        "required": [
+          "attributeValueIds",
+          "attributes",
+          "suggestedSku",
+          "suggestedName",
+          "exists"
+        ],
+        "properties": {
+          "attributeValueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductVariantAttribute"
+            }
+          },
+          "suggestedSku": {
+            "type": "string",
+            "example": "5121-MUS-L"
+          },
+          "suggestedName": {
+            "type": "string",
+            "example": "I GOT TIME Mustard L"
+          },
+          "exists": {
+            "type": "boolean",
+            "description": "True when a variant for this combination already exists."
+          }
+        }
+      },
+      "GenerateVariantsPreview": {
+        "type": "object",
+        "required": [
+          "combinations",
+          "totalCombinations",
+          "truncated"
+        ],
+        "properties": {
+          "combinations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VariantCombinationPreview"
+            }
+          },
+          "totalCombinations": {
+            "type": "integer",
+            "description": "Size of the full cartesian product."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when the response was capped at 500 combinations; generate them and request the preview again to continue."
+          }
+        }
+      },
+      "AttachVariantRequest": {
+        "type": "object",
+        "required": [
+          "productId",
+          "attributeValueIds"
+        ],
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "An existing product that does not belong to any group."
+          },
+          "attributeValueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Exactly one value per axis."
+          }
+        }
+      },
+      "UpdateVariantRequest": {
+        "type": "object",
+        "required": [
+          "attributeValueIds"
+        ],
+        "properties": {
+          "attributeValueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       }
