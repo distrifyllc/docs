@@ -304,6 +304,8 @@
               "api-reference/orders/bulk-export-orders",
               "api-reference/orders/get-last-sold-price",
               "api-reference/orders/get-last-sold-prices",
+              "api-reference/orders/get-client-last-purchases",
+              "api-reference/orders/create-stock-counts",
               "api-reference/orders/get-products-sold-by-warehouse",
               "api-reference/orders/patch",
               "api-reference/orders/delete",

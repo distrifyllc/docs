@@ -14545,6 +14545,120 @@
           }
         }
       }
+    },
+    "/api/orders/v1/clients/{clientId}/last-purchases": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Client last purchases with shelf stock and suggested order",
+        "description": "Everything the client has bought on confirmed orders, one row per product with its last sale, purchase rhythm, latest shelf count and a suggested quantity to replenish. Products sold within the window (last `orders` orders or last `days` days, whichever brings more) are `habitual`; products sold before but not within it are `lapsed`; products never sold but counted on the shelf in the last 60 days are `shelf_only`. Suggested quantity (strategy `consumed_v1`): last sale minus the latest usable shelf count, converted through the units' piece factors and rounded up to whole units of the last sale's unit; with no count, or a count taken before the last sale, the last sale again. Requires `orders.list`.",
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "orders",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 5,
+              "minimum": 1,
+              "maximum": 10
+            },
+            "description": "How many of the most recent confirmed orders define the habitual window"
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 90,
+              "minimum": 1,
+              "maximum": 365
+            },
+            "description": "How many days back define the habitual window"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientLastPurchasesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/api/orders/v1/clients/{clientId}/stock-counts": {
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Record shelf stock counts for a client",
+        "description": "Stores the quantities the rep counted on the client's shelf. Append-only: every count is a new row and the latest per product becomes the current shelf stock used by the suggested order. Idempotent on the device-generated `id`. Who counted is taken from the authenticated staff. Requires `orders.create`.",
+        "parameters": [
+          {
+            "name": "clientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStockCountsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateStockCountsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -14605,6 +14719,16 @@
       },
       "VariantsDisabled": {
         "description": "Product variants are not enabled for this organization. Turn on Product Variants in Settings (organizations.variantsEnabled) first.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The staff lacks the permission this endpoint requires",
         "content": {
           "application/json": {
             "schema": {
@@ -18375,6 +18499,284 @@
               "type": "string",
               "format": "uuid"
             }
+          }
+        }
+      },
+      "ClientLastSale": {
+        "type": "object",
+        "description": "The most recent confirmed sale of the product to the client.",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderNumber": {
+            "type": "integer"
+          },
+          "orderAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitPrice": {
+            "type": "number"
+          },
+          "unitOfMeasureId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "null = the product's own unit"
+          },
+          "uomPieces": {
+            "type": "integer",
+            "description": "Pieces per unit of measure; 0 = no conversion"
+          },
+          "uomPcsXPackaging": {
+            "type": "integer"
+          }
+        }
+      },
+      "ClientPurchaseHistory": {
+        "type": "object",
+        "description": "How often the client buys the product, so a lapsed product can be told from one that is mid-cycle.",
+        "properties": {
+          "purchaseCount": {
+            "type": "integer",
+            "description": "Distinct confirmed orders that carried the product"
+          },
+          "firstAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "avgDaysBetween": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Average days between purchases; null with a single purchase"
+          },
+          "daysSinceLast": {
+            "type": "integer",
+            "description": "Calendar days since the last purchase, in the organization's timezone"
+          }
+        }
+      },
+      "ClientShelfStock": {
+        "type": "object",
+        "description": "The latest shelf count the rep took for the product.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unitOfMeasureId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "uomPieces": {
+            "type": "integer"
+          },
+          "uomPcsXPackaging": {
+            "type": "integer"
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "capturedBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Staff who counted"
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "Counted before the last sale was delivered; the suggestion ignores it"
+          }
+        }
+      },
+      "ClientLastPurchaseItem": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "productSku": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "habitual",
+              "lapsed",
+              "shelf_only"
+            ],
+            "description": "habitual = sold within the window (last N orders or last D days); lapsed = sold before but not within the window; shelf_only = never sold, only a shelf count exists"
+          },
+          "lastSale": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClientLastSale"
+              }
+            ],
+            "nullable": true
+          },
+          "history": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClientPurchaseHistory"
+              }
+            ],
+            "nullable": true
+          },
+          "shelfStock": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClientShelfStock"
+              }
+            ],
+            "nullable": true
+          },
+          "suggestedQuantity": {
+            "type": "integer",
+            "description": "Whole units of the last sale's unit of measure; 0 = nothing to suggest"
+          },
+          "suggestedUnitOfMeasureId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "suggestedUomPieces": {
+            "type": "integer"
+          },
+          "suggestedUomPcsXPackaging": {
+            "type": "integer"
+          }
+        }
+      },
+      "ClientLastPurchasesResponse": {
+        "type": "object",
+        "properties": {
+          "clientId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ordersConsidered": {
+            "type": "integer"
+          },
+          "daysConsidered": {
+            "type": "integer"
+          },
+          "strategy": {
+            "type": "string",
+            "description": "Rule behind suggestedQuantity. consumed_v1 = last sale minus shelf stock, rounded up",
+            "example": "consumed_v1"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClientLastPurchaseItem"
+            }
+          }
+        }
+      },
+      "StockCountInput": {
+        "type": "object",
+        "required": [
+          "id",
+          "productId",
+          "quantity",
+          "capturedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Generated on the device; a retried request never records the count twice"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productName": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "Snapshot, so a count of a never-sold product describes itself"
+          },
+          "productSku": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 0
+          },
+          "unitOfMeasureId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "null = the product's own unit"
+          },
+          "uomPieces": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Both uomPieces and uomPcsXPackaging must be 0, or both positive"
+          },
+          "uomPcsXPackaging": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Device time; a value further than 5 minutes in the future is clamped to the server's now"
+          },
+          "executionStopId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The route visit the count was taken on"
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 20,
+            "default": "mobile"
+          }
+        }
+      },
+      "CreateStockCountsRequest": {
+        "type": "object",
+        "required": [
+          "counts"
+        ],
+        "properties": {
+          "counts": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/StockCountInput"
+            }
+          }
+        }
+      },
+      "CreateStockCountsResponse": {
+        "type": "object",
+        "properties": {
+          "inserted": {
+            "type": "integer"
+          },
+          "skipped": {
+            "type": "integer",
+            "description": "Counts whose id was already recorded"
           }
         }
       }
